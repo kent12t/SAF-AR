@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MindAR FBX Animation Demo</title>
+  
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+      "mindar-image-three": "https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"
+    }
+  }
+  </script>
+  
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <div class="loading hidden">
+      <div class="spinner"></div>
+      <div class="loading-text">Loading...</div>
+    </div>
+    
+    <div id="ar-container"></div>
+    
+    <div class="control-panel">
+      <button id="startButton">Start</button>
+      <button id="stopButton">Stop</button>
+      <div class="mode-toggle">
+        <input type="checkbox" id="testModeToggle" checked>
+        <label for="testModeToggle">Test Mode</label>
+      </div>
+    </div>
+  </div>
+  
+  <script src="js/main.js" type="module"></script>
+</body>
+</html> 
