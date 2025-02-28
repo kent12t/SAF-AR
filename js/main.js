@@ -38,35 +38,58 @@ if (testModeToggle) {
 function fixMaterial(material) {
   console.log('Fixing material:', material.name || 'unnamed');
   
-  // Set double-sided rendering
+  // Convert MeshPhongMaterial to MeshStandardMaterial for better PBR
+  if (material.isMeshPhongMaterial) {
+    console.log('Converting MeshPhongMaterial to MeshStandardMaterial');
+    const standardMaterial = new THREE.MeshStandardMaterial();
+    
+    // Copy basic properties
+    standardMaterial.map = material.map;
+    standardMaterial.color.copy(material.color);
+    standardMaterial.transparent = material.transparent;
+    standardMaterial.opacity = material.opacity;
+    standardMaterial.side = THREE.DoubleSide;
+    
+    // PBR properties
+    standardMaterial.roughness = 0.6; // Moderate roughness
+    standardMaterial.metalness = 0.0; // Non-metallic material
+    
+    // Ensure textures are properly set up
+    if (standardMaterial.map) {
+      standardMaterial.map.colorSpace = THREE.SRGBColorSpace;
+      standardMaterial.map.needsUpdate = true;
+    }
+    
+    // Copy normal map if exists
+    if (material.normalMap) {
+      standardMaterial.normalMap = material.normalMap;
+      standardMaterial.normalScale.copy(material.normalScale);
+    }
+    
+    console.log('Created MeshStandardMaterial:', standardMaterial);
+    return standardMaterial;
+  }
+  
+  // For non-Phong materials, apply basic fixes
   material.side = THREE.DoubleSide;
   
-  // Fix transparency issues
   if (material.transparent) {
-    console.log('Material has transparency, adjusting settings');
-    material.transparent = true;
     material.opacity = 1.0;
-    material.alphaTest = 0.01; // Helps with transparency sorting
-    material.depthWrite = true; // Ensure transparent objects write to depth buffer
+    material.alphaTest = 0.01;
+    material.depthWrite = true;
   }
   
-  // Ensure textures are properly set up
   if (material.map) {
-    console.log('Material has diffuse map:', material.map.name || 'unnamed');
+    material.map.colorSpace = THREE.SRGBColorSpace;
     material.map.needsUpdate = true;
-    material.map.encoding = THREE.sRGBEncoding;
   }
   
-  // Ensure proper normal maps
   if (material.normalMap) {
-    console.log('Material has normal map:', material.normalMap.name || 'unnamed');
     material.normalMap.needsUpdate = true;
-    material.normalScale.set(1, 1); // Reset normal scale
+    material.normalScale.set(1, 1);
   }
   
-  // Ensure proper material settings
   material.needsUpdate = true;
-  
   return material;
 }
 
@@ -387,6 +410,7 @@ const initTestScene = () => {
   });
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
   
   const arContainer = document.getElementById('ar-container');
   if (!arContainer) {
@@ -398,11 +422,11 @@ const initTestScene = () => {
   console.log('Renderer attached to DOM');
   
   // Add lighting
-  const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-  directionalLight.position.set(0, 5, 0);
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+  directionalLight.position.set(1, 2, 3);
   scene.add(directionalLight);
   
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+  const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
   scene.add(ambientLight);
   console.log('Lighting added to scene');
   
@@ -447,36 +471,43 @@ const getModelConfigs = () => {
   // For testing, we'll use placeholder model paths
   const configs = [
     { 
-      path: 'models/ARMY AR.glb', 
+      path: 'models/army-ar.glb', 
       position: new THREE.Vector3(-2, 0, 0),
       scale: 1.0,  // GLB models typically need a larger scale
       delay: 0 
     },
     { 
-      path: 'models/Civilian.fbx', 
+      path: 'models/civilian.fbx', 
       position: new THREE.Vector3(-1, 0, 0),
       scale: 0.01,  // FBX models need small scale
       delay: 1,
       visible: false
     },
     { 
-      path: 'models/DIS AR (human).fbx', 
+      path: 'models/dis.glb', 
       position: new THREE.Vector3(0, 0, 0),
+      scale: 1,
+      delay: 2,
+      visible: false
+    },
+    { 
+      path: 'models/dis-ball.fbx', 
+      position: new THREE.Vector3(0, 0, 2),
       scale: 0.01,
       delay: 2,
       visible: false
     },
     { 
-      path: 'models/NAVY AR.fbx', 
+      path: 'models/navy.fbx', 
       position: new THREE.Vector3(1, 0, 0),
       scale: 0.01,
       delay: 3,
       visible: false
     },
     { 
-      path: 'models/RSAF AR.fbx', 
+      path: 'models/rsaf.glb', 
       position: new THREE.Vector3(2, 0, 0),
-      scale: 0.01,
+      scale: 1,
       delay: 4,
       visible: false
     }
@@ -605,98 +636,94 @@ const initializeAR = async () => {
     }
     
     console.log('Creating MindAR instance...');
-    // Create MindAR image tracking system with Three.js integration
     mindarThree = new MindARThree({
       container: document.querySelector("#ar-container"),
       imageTargetSrc: 'targets/targets.mind',
       uiScanning: true,
-      uiLoading: false, // We use our custom loading UI
-      // Add logarithmic depth buffer option to fix z-fighting
+      uiLoading: false,
       rendererOptions: { 
-        logarithmicDepthBuffer: true 
+        antialias: true,
+        alpha: true,
+        logarithmicDepthBuffer: true,
+        outputColorSpace: THREE.SRGBColorSpace
       }
     });
     console.log('MindAR instance created');
 
-    // Get Three.js scene, camera, and renderer from MindAR
     const { renderer, scene, camera } = mindarThree;
     console.log('Got scene, camera, and renderer from MindAR');
 
-    // Create an anchor for the target image
     const anchor = mindarThree.addAnchor(0);
     console.log('Target anchor created');
 
-    // Add lighting to the scene
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-    directionalLight.position.set(0, 5, 0);
+    // Add lighting
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+    directionalLight.position.set(1, 2, 3);
     scene.add(directionalLight);
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
     scene.add(ambientLight);
     console.log('Lighting added to AR scene');
 
-    // Define models with positions and delays
+    // Load models with the ModelManager
     const modelConfigs = getModelConfigs();
     
-    // For testing, we'll use a single model file if the others don't exist
-    let modelFile = 'models/ARMY AR.glb';
-    console.log(`Using fallback model for AR mode: ${modelFile}`);
-    
-    // Load all models
-    console.log('Loading models for AR mode...');
     for (const config of modelConfigs) {
-      // Try to load the specified model, fall back to modelFile if it doesn't exist
       try {
-        console.log(`Attempting to load ${config.path} for AR mode`);
-        const model = await ModelManager.loadModel(config.path, {
-          position: config.position,
-          visible: config.visible !== false
-        });
-        
-        anchor.group.add(model.object);
-        console.log(`Added ${config.path} to AR anchor`);
-      } catch (error) {
-        console.warn(`Couldn't load ${config.path} for AR, trying fallback model`);
-        try {
-          const fallbackModel = await ModelManager.loadModel(modelFile, {
-            position: config.position,
-            visible: config.visible !== false
-          });
-          
-          anchor.group.add(fallbackModel.object);
-          console.log(`Added fallback model for ${config.path} to AR anchor`);
-        } catch (fallbackError) {
-          console.error(`Failed to load fallback model for AR:`, fallbackError);
+        console.log(`Loading model: ${config.path}`);
+        const model = await ModelManager.loadModel(config.path, config);
+        if (model) {
+          anchor.group.add(model.object);
+          console.log(`Added ${config.path} to AR anchor`);
         }
+      } catch (error) {
+        console.error(`Failed to load model ${config.path}:`, error);
+        displayErrorMessage(`Failed to load ${config.path}`);
       }
     }
-    
-    // Show models with delays
-    console.log('Setting up delayed model visibility for AR...');
-    for (const config of modelConfigs) {
-      if (config.visible === false) {
-        ModelManager.showModel(config.path, config.delay);
-      }
-    }
-    
+
     // Animation loop
-    console.log('Setting up AR animation loop...');
     renderer.setAnimationLoop(() => {
-      // Update animation mixers
       const delta = clock.getDelta();
       ModelManager.updateAnimations(delta);
-      
-      // Render the scene
       renderer.render(scene, camera);
     });
-    
-    console.log('AR initialization complete');
+
     return mindarThree;
   } catch (error) {
     console.error('Error initializing AR:', error);
     throw error;
   }
 };
+
+// Display error message in the scene
+function displayErrorMessage(message) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.font = '24px Arial';
+  ctx.fillStyle = 'white';
+  ctx.textAlign = 'center';
+  ctx.fillText('Error Loading Model:', canvas.width/2, 100);
+  ctx.fillText(message, canvas.width/2, 140);
+  ctx.fillText('Check console for details', canvas.width/2, 180);
+  
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const geometry = new THREE.PlaneGeometry(4, 2);
+  const material = new THREE.MeshBasicMaterial({ 
+    map: texture, 
+    transparent: true 
+  });
+  
+  const plane = new THREE.Mesh(geometry, material);
+  scene.add(plane);
+  
+  return plane;
+}
 
 // Start AR experience
 const startAR = async () => {
