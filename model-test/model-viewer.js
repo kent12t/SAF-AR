@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 
 // DOM elements
 const scaleSlider = document.getElementById('scale');
@@ -16,8 +17,8 @@ let animationAction = null;
 let isPlaying = true;
 let isWireframe = false;
 
-// Model path
-const MODEL_PATH = '../models/ARMY AR.glb';
+// Model path - change this to load a different model
+const MODEL_PATH = '../models/rsaf.glb'; // Can be .glb, .gltf, or .fbx
 
 // Initialize Three.js scene
 function init() {
@@ -43,7 +44,7 @@ function init() {
   });
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(window.devicePixelRatio);
-  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
   document.getElementById('canvas-container').appendChild(renderer.domElement);
   
   // Add orbit controls
@@ -52,11 +53,11 @@ function init() {
   controls.dampingFactor = 0.05;
   
   // Add lighting
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+  const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
   scene.add(ambientLight);
   
-  const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-  directionalLight.position.set(0, 5, 5);
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+  directionalLight.position.set(1, 2, 3);
   scene.add(directionalLight);
   
   // Add a grid helper
@@ -82,102 +83,144 @@ function init() {
 function fixMaterial(material) {
   console.log('Fixing material:', material);
   
-  // Set double-sided rendering
+  // Convert MeshPhongMaterial to MeshStandardMaterial for better PBR
+  if (material.isMeshPhongMaterial) {
+    console.log('Converting MeshPhongMaterial to MeshStandardMaterial');
+    const standardMaterial = new THREE.MeshStandardMaterial();
+    
+    // Copy basic properties
+    standardMaterial.map = material.map;
+    standardMaterial.color.copy(material.color);
+    standardMaterial.transparent = material.transparent;
+    standardMaterial.opacity = material.opacity;
+    standardMaterial.side = THREE.DoubleSide;
+    
+    // PBR properties
+    standardMaterial.roughness = 0.6; // Moderate roughness
+    standardMaterial.metalness = 0.0; // Non-metallic material
+    
+    // Ensure textures are properly set up
+    if (standardMaterial.map) {
+      standardMaterial.map.colorSpace = THREE.SRGBColorSpace;
+      standardMaterial.map.needsUpdate = true;
+    }
+    
+    // Copy normal map if exists
+    if (material.normalMap) {
+      standardMaterial.normalMap = material.normalMap;
+      standardMaterial.normalScale.copy(material.normalScale);
+    }
+    
+    console.log('Created MeshStandardMaterial:', standardMaterial);
+    return standardMaterial;
+  }
+  
+  // For non-Phong materials, apply basic fixes
   material.side = THREE.DoubleSide;
   
-  // Fix transparency issues
   if (material.transparent) {
-    console.log('Material has transparency, adjusting settings');
-    material.transparent = true;
     material.opacity = 1.0;
-    material.alphaTest = 0.01; // Helps with transparency sorting
-    material.depthWrite = true; // Ensure transparent objects write to depth buffer
+    material.alphaTest = 0.01;
+    material.depthWrite = true;
   }
   
-  // Ensure textures are properly set up
   if (material.map) {
-    console.log('Material has diffuse map:', material.map);
+    material.map.colorSpace = THREE.SRGBColorSpace;
     material.map.needsUpdate = true;
-    material.map.encoding = THREE.sRGBEncoding;
   }
   
-  // Ensure proper normal maps
   if (material.normalMap) {
-    console.log('Material has normal map:', material.normalMap);
     material.normalMap.needsUpdate = true;
-    material.normalScale.set(1, 1); // Reset normal scale
+    material.normalScale.set(1, 1);
   }
   
-  // Ensure proper material settings
   material.needsUpdate = true;
-  
   return material;
 }
 
-// Fix geometry issues
-function fixGeometry(geometry) {
-  console.log('Checking geometry for issues:', geometry);
+// Display error message in the scene
+function displayErrorMessage(message) {
+  // Create a canvas texture with the error message
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.font = '24px Arial';
+  ctx.fillStyle = 'white';
+  ctx.textAlign = 'center';
+  ctx.fillText('Error Loading Model:', canvas.width/2, 100);
+  ctx.fillText(message, canvas.width/2, 140);
+  ctx.fillText('Check console for details', canvas.width/2, 180);
   
-  // Check and fix normal vectors if needed
-  if (geometry.attributes.normal) {
-    console.log('Geometry has normal attributes');
-    geometry.computeVertexNormals(); // Recompute normals
-    geometry.attributes.normal.needsUpdate = true;
-  } else {
-    console.log('Computing normals for geometry without normals');
-    geometry.computeVertexNormals();
-  }
+  // Create a plane to display the message
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const geometry = new THREE.PlaneGeometry(4, 2);
+  const material = new THREE.MeshBasicMaterial({ 
+    map: texture, 
+    transparent: true 
+  });
   
-  // Make sure buffers are updated
-  geometry.attributes.position.needsUpdate = true;
+  const plane = new THREE.Mesh(geometry, material);
+  scene.add(plane);
   
-  return geometry;
+  return plane;
 }
 
-// Load the GLTF/GLB model
+// Load the model (GLB/GLTF or FBX)
 function loadModel() {
   console.log(`Loading model from: ${MODEL_PATH}`);
+  
+  // Determine file type
+  const isGLB = MODEL_PATH.toLowerCase().endsWith('.glb') || MODEL_PATH.toLowerCase().endsWith('.gltf');
+  const isFBX = MODEL_PATH.toLowerCase().endsWith('.fbx');
+  
+  if (!isGLB && !isFBX) {
+    console.error('Unsupported model format. Only GLB/GLTF and FBX are supported.');
+    displayErrorMessage('Unsupported model format');
+    return;
+  }
   
   // Check if the file exists first
   fetch(MODEL_PATH, { method: 'HEAD' })
     .then(response => {
       if (!response.ok) {
         console.error(`Model file does not exist: ${MODEL_PATH}`);
-        alert(`Error: Could not find model file at ${MODEL_PATH}`);
+        displayErrorMessage(`File not found: ${MODEL_PATH}`);
         return;
       }
       
       console.log('Model file exists, loading...');
       
-      const loader = new GLTFLoader();
+      // Choose the appropriate loader based on file extension
+      const loader = isGLB ? new GLTFLoader() : new FBXLoader();
       const startTime = performance.now();
       
       loader.load(
         MODEL_PATH,
-        (gltf) => {
+        (result) => {
           const loadTime = performance.now() - startTime;
           console.log(`Model loaded successfully in ${loadTime.toFixed(2)}ms`);
-          console.log('GLB data:', gltf);
           
-          // Set the model
-          model = gltf.scene;
+          // Set the model (different for GLB vs FBX)
+          if (isGLB) {
+            model = result.scene;
+          } else {
+            model = result; // FBX loader returns the model directly
+          }
           
           // Log model hierarchy and fix rendering issues
           console.log('Model hierarchy:');
           model.traverse(child => {
             if (child.isMesh) {
-              console.log(`Mesh: ${child.name}`, {
-                geometry: child.geometry,
-                material: child.material,
-                position: child.position,
-                rotation: child.rotation,
-                scale: child.scale
-              });
+              console.log(`Mesh: ${child.name}`);
               
               // Fix geometry issues
-              if (child.geometry) {
-                child.geometry = fixGeometry(child.geometry);
-              }
+              // if (child.geometry) {
+              //   child.geometry = fixGeometry(child.geometry);
+              // }
               
               // Fix material issues
               if (child.material) {
@@ -196,38 +239,47 @@ function loadModel() {
               // Ensure the mesh casts and receives shadows properly
               child.castShadow = true;
               child.receiveShadow = true;
-            } else if (child.isObject3D) {
-              console.log(`Object3D: ${child.name}`, {
-                position: child.position,
-                rotation: child.rotation,
-                scale: child.scale
-              });
             }
           });
           
-          // Check for animations
-          if (gltf.animations && gltf.animations.length > 0) {
-            console.log(`Model has ${gltf.animations.length} animations:`);
-            gltf.animations.forEach((animation, index) => {
-              console.log(`Animation ${index}: ${animation.name}, duration: ${animation.duration}s`);
+          // Handle animations (different for GLB vs FBX)
+          mixer = new THREE.AnimationMixer(model);
+          const animations = isGLB ? result.animations : model.animations;
+          
+          if (animations && animations.length > 0) {
+            console.log(`Model has ${animations.length} animations:`);
+            animations.forEach((animation, index) => {
+              console.log(`Animation ${index}: ${animation.name || 'unnamed'}, duration: ${animation.duration}s`);
             });
             
-            mixer = new THREE.AnimationMixer(model);
-            animationAction = mixer.clipAction(gltf.animations[0]);
+            animationAction = mixer.clipAction(animations[0]);
             animationAction.play();
           } else {
             console.log('Model has no animations');
+            animationAction = null;
           }
           
-          // Set initial scale
+          // Set initial scale - FBX models typically need to be scaled down
           const initialScale = parseFloat(scaleSlider.value);
-          model.scale.set(initialScale, initialScale, initialScale);
+          if (isFBX) {
+            // FBX models often need to be scaled down
+            model.scale.set(initialScale * 0.01, initialScale * 0.01, initialScale * 0.01);
+            console.log('Applied FBX scale factor');
+          } else {
+            model.scale.set(initialScale, initialScale, initialScale);
+          }
           
           // Add model to scene
           scene.add(model);
           
           // Center camera on model
           centerCameraOnModel();
+          
+          // Update UI
+          if (toggleAnimationBtn) {
+            toggleAnimationBtn.disabled = !animations || animations.length === 0;
+            toggleAnimationBtn.textContent = 'Pause Animation';
+          }
         },
         (xhr) => {
           const percentComplete = Math.round((xhr.loaded / xhr.total) * 100);
@@ -235,13 +287,13 @@ function loadModel() {
         },
         (error) => {
           console.error('Error loading model:', error);
-          alert(`Error loading model: ${error.message}`);
+          displayErrorMessage(error.message || 'Unknown error');
         }
       );
     })
     .catch(error => {
       console.error('Error checking if model file exists:', error);
-      alert(`Error: Could not access model file at ${MODEL_PATH}`);
+      displayErrorMessage('Network error checking file');
     });
 }
 
@@ -253,7 +305,15 @@ function setupEventListeners() {
     scaleValue.textContent = value.toFixed(1);
     
     if (model) {
-      model.scale.set(value, value, value);
+      // Check if it's an FBX model (smaller scale factor)
+      const isFBX = MODEL_PATH.toLowerCase().endsWith('.fbx');
+      const scaleFactor = isFBX ? 0.01 : 1.0;
+      
+      model.scale.set(
+        value * scaleFactor, 
+        value * scaleFactor, 
+        value * scaleFactor
+      );
     }
   });
   
