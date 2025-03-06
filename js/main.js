@@ -337,6 +337,12 @@ const ModelManager = {
 
     console.log(`Setting up model ${path} to show after ${delay}ms delay`);
 
+    // In AR mode, we'll handle showing models through the animation sequence
+    if (!testMode && mindarThree) {
+      console.log(`In AR mode, model ${path} will be shown by the animation sequence`);
+      return;
+    }
+
     setTimeout(() => {
       console.log(`Showing model ${path} after delay`);
       this.models[path].object.visible = true;
@@ -498,18 +504,22 @@ const initTestScene = () => {
 
   // Create scene, camera, and renderer
   scene = new THREE.Scene();
+  // Use a transparent background instead of a color
+  scene.background = null;
+
   camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 
   console.log('Test scene created, setting up renderer...');
 
   renderer = new THREE.WebGLRenderer({
     antialias: true,
-    alpha: true,
+    alpha: true, // Enable transparency
     logarithmicDepthBuffer: true // Help with z-fighting issues
   });
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.setClearColor(0x000000, 0); // Set clear color with 0 alpha (fully transparent)
 
   const arContainer = document.getElementById('ar-container');
   if (!arContainer) {
@@ -531,11 +541,6 @@ const initTestScene = () => {
 
   // Position camera
   camera.position.set(0, 3, 15);
-
-  // Add a grid helper for reference
-  // const gridHelper = new THREE.GridHelper(10, 10);
-  // scene.add(gridHelper);
-  // console.log('Grid helper added to scene');
 
   // Animation loop
   const animate = () => {
@@ -798,19 +803,26 @@ const initializeAR = async () => {
     mindarThree = new MindARThree({
       container: document.querySelector("#ar-container"),
       imageTargetSrc: 'targets/targets.mind',
-      uiScanning: true,
-      uiLoading: false,
+      uiScanning: true, // Show scanning UI
+      uiLoading: false, // We use our own loading UI
       rendererOptions: {
         antialias: true,
-        alpha: true,
+        alpha: true, // Enable transparency
         logarithmicDepthBuffer: true,
         outputColorSpace: THREE.SRGBColorSpace
-      }
+      },
+      filterMinCF: 0.001, // Adjust tracking sensitivity
+      filterBeta: 0.01,   // Adjust tracking stability
+      missTolerance: 5,   // Number of frames to keep showing object when target is lost
+      warmupTolerance: 5  // Number of frames to wait before showing object when target is found
     });
     console.log('MindAR instance created');
 
     const { renderer, scene, camera } = mindarThree;
     console.log('Got scene, camera, and renderer from MindAR');
+
+    // Ensure transparent background
+    renderer.setClearColor(0x000000, 0); // Set clear color with 0 alpha (fully transparent)
 
     const anchor = mindarThree.addAnchor(0);
     console.log('Target anchor created');
@@ -830,6 +842,12 @@ const initializeAR = async () => {
     // Create an array to store spotlight cylinders
     const spotlights = [];
 
+    // Store timeout IDs for cleanup
+    const timeoutIds = [];
+
+    // Track whether animation sequence has started
+    let animationSequenceStarted = false;
+
     for (const config of modelConfigs) {
       if (!config.enabled) {
         console.log(`Skipping disabled model: ${config.path}`);
@@ -841,7 +859,7 @@ const initializeAR = async () => {
         const model = await ModelManager.loadModel(config.path, {
           position: config.position,
           scale: config.scale,
-          visible: config.visible,
+          visible: false, // Start invisible regardless of config
           delay: config.delay
         });
 
@@ -880,32 +898,141 @@ const initializeAR = async () => {
       }
     }
 
-    // Show spotlights with the same delays as their models
-    spotlights.forEach(({ spotlight, delay, modelPath }) => {
-      setTimeout(() => {
-        console.log(`Showing spotlight for ${modelPath} after ${delay}ms in AR mode`);
-        spotlight.visible = true;
-      }, delay);
-    });
+    // Function to start animation sequence
+    const startAnimationSequence = () => {
+      if (animationSequenceStarted) {
+        console.log('Animation sequence already started, ignoring');
+        return;
+      }
 
-    // Update the reset models function to also reset spotlights in AR mode
-    const originalResetModels = ModelManager.resetModels;
-    ModelManager.resetModels = function () {
-      // Call the original reset function
-      originalResetModels.call(this);
+      console.log('Target found! Starting animation sequence...');
+      animationSequenceStarted = true;
 
-      // Hide all spotlights
+      // Clear any existing timeouts (just in case)
+      timeoutIds.forEach(id => {
+        clearTimeout(id);
+        console.log(`Cleared existing timeout ID: ${id}`);
+      });
+      timeoutIds.length = 0;
+
+      // Make sure all models are hidden initially
+      Object.keys(ModelManager.models).forEach(path => {
+        const model = ModelManager.models[path];
+        if (model && model.object) {
+          model.object.visible = false;
+
+          // Reset animations
+          if (ModelManager.actions[path]) {
+            Object.keys(ModelManager.actions[path]).forEach(actionName => {
+              const action = ModelManager.actions[path][actionName];
+              action.paused = true;
+              action.reset();
+            });
+          }
+        }
+      });
+
+      // Hide all spotlights initially
       spotlights.forEach(({ spotlight }) => {
         spotlight.visible = false;
       });
 
-      // Show spotlights again with their delays
+      // Show models with their delays
+      Object.keys(ModelManager.models).forEach(path => {
+        const model = ModelManager.models[path];
+        if (!model || !model.object) return;
+
+        const timeoutId = setTimeout(() => {
+          // Check if animation sequence is still active
+          if (!animationSequenceStarted) {
+            console.log(`Animation sequence stopped, not showing ${path}`);
+            return;
+          }
+
+          console.log(`Showing model ${path} after ${model.options.delay}ms in AR mode`);
+          model.object.visible = true;
+
+          // Start animations when the model becomes visible
+          if (ModelManager.actions[path]) {
+            console.log(`Starting animations for ${path}`);
+            Object.keys(ModelManager.actions[path]).forEach(actionName => {
+              const action = ModelManager.actions[path][actionName];
+              action.paused = false;
+              action.reset();
+              action.play();
+            });
+          }
+        }, model.options.delay);
+
+        console.log(`Set timeout ID ${timeoutId} for model ${path} with delay ${model.options.delay}ms`);
+        timeoutIds.push(timeoutId);
+      });
+
+      // Show spotlights with the same delays as their models
       spotlights.forEach(({ spotlight, delay, modelPath }) => {
-        setTimeout(() => {
-          console.log(`Showing spotlight for ${modelPath} after reset in AR mode`);
+        const timeoutId = setTimeout(() => {
+          // Check if animation sequence is still active
+          if (!animationSequenceStarted) {
+            console.log(`Animation sequence stopped, not showing spotlight for ${modelPath}`);
+            return;
+          }
+
+          console.log(`Showing spotlight for ${modelPath} after ${delay}ms in AR mode`);
           spotlight.visible = true;
         }, delay);
+
+        console.log(`Set timeout ID ${timeoutId} for spotlight of ${modelPath} with delay ${delay}ms`);
+        timeoutIds.push(timeoutId);
       });
+    };
+
+    // Function to stop animation sequence
+    const stopAnimationSequence = () => {
+      if (!animationSequenceStarted) return;
+
+      console.log('Target lost! Stopping animation sequence...');
+      animationSequenceStarted = false;
+
+      // Clear all timeouts
+      timeoutIds.forEach(id => {
+        clearTimeout(id);
+        console.log(`Cleared timeout ID: ${id}`);
+      });
+      timeoutIds.length = 0;
+
+      // Hide all models immediately
+      Object.keys(ModelManager.models).forEach(path => {
+        const model = ModelManager.models[path];
+        if (model && model.object) {
+          console.log(`Hiding model ${path} due to target loss`);
+          model.object.visible = false;
+
+          // Pause and reset animations
+          if (ModelManager.actions[path]) {
+            console.log(`Stopping animations for ${path}`);
+            Object.keys(ModelManager.actions[path]).forEach(actionName => {
+              const action = ModelManager.actions[path][actionName];
+              action.paused = true;
+              action.reset();
+            });
+          }
+        }
+      });
+
+      // Hide all spotlights immediately
+      spotlights.forEach(({ spotlight, modelPath }) => {
+        console.log(`Hiding spotlight for ${modelPath} due to target loss`);
+        spotlight.visible = false;
+      });
+    };
+
+    // Add event listeners for target found/lost
+    anchor.onTargetFound = () => {
+      startAnimationSequence();
+    };
+
+    anchor.onTargetLost = () => {
+      stopAnimationSequence();
     };
 
     // Animation loop
@@ -915,6 +1042,16 @@ const initializeAR = async () => {
 
       renderer.render(scene, camera);
     });
+
+    // Add cleanup function to mindarThree
+    mindarThree.cleanup = () => {
+      console.log('Cleaning up AR resources...');
+      stopAnimationSequence();
+
+      // Remove event listeners
+      anchor.onTargetFound = null;
+      anchor.onTargetLost = null;
+    };
 
     return mindarThree;
   } catch (error) {
@@ -956,8 +1093,11 @@ function displayErrorMessage(message) {
 const startAR = async () => {
   console.log('Starting AR experience...');
   try {
-    console.log('Showing loading screen');
-    loadingElement.classList.remove('hidden');
+    // Show loading screen
+    if (loadingElement) {
+      loadingElement.classList.remove('hidden');
+      document.querySelector('.loading-text').textContent = 'Loading...';
+    }
 
     // Clean up any existing scene
     if (renderer) {
@@ -979,45 +1119,101 @@ const startAR = async () => {
         throw new Error('Failed to initialize test scene');
       }
 
-      const { scene: testScene } = result;
+      const { scene: testScene, camera: testCamera, renderer: testRenderer } = result;
       scene = testScene;
+      camera = testCamera;
+      renderer = testRenderer;
+
+      // Ensure transparent background in test mode too
+      renderer.setClearColor(0x000000, 0);
+
       console.log('Test scene initialized, loading models...');
       await loadTestModels();
     } else {
       console.log('Running in AR mode');
-      // Check if targets.mind exists
       try {
+        // Request camera permissions explicitly
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          // Stop the stream immediately, MindAR will request it again
+          stream.getTracks().forEach(track => track.stop());
+          console.log('Camera permission granted');
+        } catch (cameraError) {
+          console.error('Camera permission denied:', cameraError);
+          throw new Error('Camera permission denied. Please allow camera access to use AR mode.');
+        }
+
         // Initialize AR with target tracking
         console.log('Initializing AR mode...');
         mindarThree = await initializeAR();
         console.log('Starting MindAR...');
-        await mindarThree.start();
-        console.log('MindAR started successfully');
-      } catch (error) {
-        console.error('Error starting AR mode:', error);
-        document.querySelector('.loading-text').textContent = 'Error: Missing target file or camera permission';
-        // Fall back to test mode
-        console.log('Falling back to test mode');
-        if (testModeToggle) testModeToggle.checked = true;
-        testMode = true;
-        const result = initTestScene();
 
-        if (!result) {
-          throw new Error('Failed to initialize fallback test scene');
+        try {
+          await mindarThree.start();
+          console.log('MindAR started successfully');
+        } catch (startError) {
+          console.error('Error starting MindAR:', startError);
+          throw new Error('Failed to start camera. Please check camera permissions and try again.');
+        }
+      } catch (error) {
+        console.error('Error in AR mode:', error);
+
+        // Show error message
+        if (loadingElement) {
+          document.querySelector('.loading-text').textContent =
+            `Error: ${error.message || 'Failed to initialize AR'}`;
         }
 
-        const { scene: testScene } = result;
-        scene = testScene;
-        await loadTestModels();
+        // Ask user if they want to fall back to test mode
+        if (confirm('AR mode failed. Would you like to try test mode instead?')) {
+          console.log('Falling back to test mode');
+          if (testModeToggle) testModeToggle.checked = true;
+          testMode = true;
+
+          // Try test mode
+          const result = initTestScene();
+
+          if (!result) {
+            throw new Error('Failed to initialize fallback test scene');
+          }
+
+          const { scene: testScene, camera: testCamera, renderer: testRenderer } = result;
+          scene = testScene;
+          camera = testCamera;
+          renderer = testRenderer;
+
+          await loadTestModels();
+        } else {
+          // User declined fallback, rethrow error
+          throw error;
+        }
       }
     }
 
     console.log('AR experience started successfully');
-    loadingElement.classList.add('hidden');
+
+    // Hide loading screen
+    if (loadingElement) {
+      loadingElement.classList.add('hidden');
+    }
+
+    // Update button states
+    if (startButton) startButton.disabled = true;
+    if (stopButton) stopButton.disabled = false;
+
   } catch (error) {
     console.error('Error starting AR:', error);
-    loadingElement.classList.add('hidden');
-    document.querySelector('.loading-text').textContent = 'Error starting AR';
+
+    // Show error message
+    if (loadingElement) {
+      loadingElement.classList.add('hidden');
+    }
+
+    alert(`Error starting experience: ${error.message || 'Unknown error'}`);
+
+    // Reset button states
+    if (startButton) startButton.disabled = false;
+    if (stopButton) stopButton.disabled = true;
   }
 };
 
@@ -1049,24 +1245,56 @@ window.addEventListener('load', () => {
 // Stop AR experience
 const stopAR = async () => {
   console.log('Stopping AR experience...');
-  if (testMode) {
-    // Clean up test scene
-    if (renderer) {
-      console.log('Disposing test renderer');
-      renderer.dispose();
-      document.getElementById('ar-container').innerHTML = '';
-    }
-  } else if (mindarThree) {
-    // Stop AR tracking
-    console.log('Stopping MindAR tracking');
-    await mindarThree.stop();
-    mindarThree.renderer.setAnimationLoop(null);
-  }
 
-  // Clear models
-  console.log('Clearing models');
-  ModelManager.clearModels();
-  console.log('AR experience stopped');
+  try {
+    // Stop MindAR if in AR mode
+    if (mindarThree && !testMode) {
+      console.log('Stopping MindAR...');
+
+      // Call cleanup function to clear timeouts and event listeners
+      if (typeof mindarThree.cleanup === 'function') {
+        mindarThree.cleanup();
+      }
+
+      await mindarThree.stop();
+      mindarThree = null;
+      console.log('MindAR stopped');
+    }
+
+    // Stop animation cycle
+    ModelManager.stopResetCycle();
+
+    // Clear models
+    ModelManager.clearModels();
+
+    // Clean up renderer
+    if (renderer) {
+      console.log('Disposing renderer...');
+      renderer.dispose();
+
+      // Clear the container
+      const arContainer = document.getElementById('ar-container');
+      if (arContainer) {
+        arContainer.innerHTML = '';
+      }
+
+      renderer = null;
+    }
+
+    // Clear scene and camera references
+    scene = null;
+    camera = null;
+
+    console.log('AR experience stopped successfully');
+
+    // Update button states
+    if (startButton) startButton.disabled = false;
+    if (stopButton) stopButton.disabled = true;
+
+  } catch (error) {
+    console.error('Error stopping AR:', error);
+    alert(`Error stopping experience: ${error.message || 'Unknown error'}`);
+  }
 };
 
 // Handle window resize
