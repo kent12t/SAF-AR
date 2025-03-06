@@ -195,18 +195,24 @@ const ModelManager = {
       // Apply scale (different default for GLB vs FBX)
       object.scale.set(modelOptions.scale, modelOptions.scale, modelOptions.scale);
 
-      // Fix materials
-      object.traverse((child) => {
-        if (child.isMesh) {
-          console.log(`Fixing materials for mesh: ${child.name}`);
-          child.material = fixMaterial(child.material);
+      // Check if this is the dis-ball model and apply special material
+      if (path.includes('dis-ball')) {
+        console.log('Detected dis-ball model, applying warm emissive material');
+        object = applyWarmEmissiveMaterial(object);
+      } else {
+        // Fix materials for other models
+        object.traverse((child) => {
+          if (child.isMesh) {
+            console.log(`Fixing materials for mesh: ${child.name}`);
+            child.material = fixMaterial(child.material);
 
-          // Fix geometry if needed
-          if (child.geometry) {
-            child.geometry = fixGeometry(child.geometry);
+            // Fix geometry if needed
+            if (child.geometry) {
+              child.geometry = fixGeometry(child.geometry);
+            }
           }
-        }
-      });
+        });
+      }
 
       // Set initial visibility
       object.visible = modelOptions.visible;
@@ -311,6 +317,14 @@ const ModelManager = {
   updateAnimations(delta) {
     Object.keys(this.mixers).forEach(path => {
       this.mixers[path].update(delta);
+    });
+
+    // Update custom animations for models
+    Object.keys(this.models).forEach(path => {
+      const model = this.models[path];
+      if (model.object && model.object.userData && model.object.userData.update) {
+        model.object.userData.update(delta);
+      }
     });
   },
 
@@ -576,7 +590,7 @@ const getModelConfigs = () => {
       path: 'models/rsaf.fbx',
       position: { x: -1.5, y: 0, z: 1 },
       scale: 0.01,
-      delay: 4000,
+      delay: 3500,
       visible: false,
       enabled: true
     },
@@ -587,7 +601,7 @@ const getModelConfigs = () => {
       path: 'models/dis.glb',
       position: { x: -3, y: 0, z: 0 },
       scale: 1,
-      delay: 8000,
+      delay: 6500,
       visible: false,
       enabled: true
     },
@@ -597,7 +611,7 @@ const getModelConfigs = () => {
       path: 'models/dis-ball.fbx',
       position: { x: -3.1, y: 1.6, z: 1.4 },
       scale: 0.007,
-      delay: 13000,
+      delay: 11000,
       visible: false,
       enabled: true
     },
@@ -608,7 +622,7 @@ const getModelConfigs = () => {
       path: 'models/navy.fbx',
       position: { x: 3, y: 0, z: 0 },
       scale: 0.01,
-      delay: 6000,
+      delay: 5000,
       visible: false,
       enabled: true
     },
@@ -920,4 +934,70 @@ window.addEventListener('error', (error) => {
   if (document.querySelector('.loading-text')) {
     document.querySelector('.loading-text').textContent = 'Application error';
   }
-}); 
+});
+
+// Apply warm emissive material to dis-ball model
+function applyWarmEmissiveMaterial(object) {
+  console.log('Applying warm emissive material to dis-ball');
+
+  // Create a warm emissive material
+  const warmEmissiveMaterial = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(0xffaa44),
+    emissive: new THREE.Color(0xffaaaa),
+    emissiveIntensity: 10, // Strong emissive effect
+    roughness: 0.3, // Slightly glossy
+    side: THREE.DoubleSide // Render both sides
+  });
+
+  // Apply the material to the object
+  object.traverse(child => {
+    if (child.isMesh) {
+      console.log(`Applying warm emissive material to mesh: ${child.name}`);
+
+      // Store the original material for reference
+      child.userData.originalMaterial = child.material;
+
+      // Apply the new material
+      child.material = warmEmissiveMaterial;
+
+      // Store reference to the material for animation
+      child.userData.emissiveMaterial = warmEmissiveMaterial;
+    }
+  });
+
+  // Add pulsing animation to the object
+  object.userData.pulseAnimation = {
+    time: 0,
+    speed: 3, // Speed of pulsing
+    minIntensity: 0.5, // Minimum emissive intensity
+    maxIntensity: 1.2, // Maximum emissive intensity
+    update: function (delta) {
+      this.time += delta * this.speed;
+
+      // Calculate pulsing intensity using sine wave
+      const intensity = this.minIntensity + (Math.sin(this.time) * 0.5 + 0.5) * (this.maxIntensity - this.minIntensity);
+
+      // Apply to all meshes with emissive material
+      object.traverse(child => {
+        if (child.userData.emissiveMaterial) {
+          child.userData.emissiveMaterial.emissiveIntensity = intensity;
+        }
+      });
+    }
+  };
+
+  // Add update function to the object
+  const originalUpdateFunction = object.userData.update || function () { };
+  object.userData.update = function (delta) {
+    // Call original update function if it exists
+    originalUpdateFunction(delta);
+
+    // Update pulsing animation
+    if (this.pulseAnimation) {
+      this.pulseAnimation.update(delta);
+    }
+  };
+
+  console.log('Warm emissive material with pulsing effect applied');
+  return object;
+} 
