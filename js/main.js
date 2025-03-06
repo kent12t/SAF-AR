@@ -632,6 +632,52 @@ const getModelConfigs = () => {
   return configs;
 };
 
+// Create a simple spotlight cylinder without animations
+function createSpotlightCylinder(position, scale = 1.0) {
+  console.log('Creating simple spotlight cylinder at position:', position);
+
+  // Create geometry - tapered cylinder (cone-like)
+  const radiusTop = 0.6; // Slightly smaller top
+  const radiusBottom = 2;
+  const height = 15.0;
+  const radialSegments = 16;
+  const geometry = new THREE.CylinderGeometry(
+    radiusBottom,
+    radiusTop,
+    height,
+    radialSegments
+  );
+
+  // Create simple emissive, transparent material
+  const material = new THREE.MeshStandardMaterial({
+    emissive: new THREE.Color(0xffbbaa),
+    emissiveIntensity: 1,
+    transparent: true,
+    opacity: 0.1,
+    side: THREE.DoubleSide,
+    depthWrite: false // Prevent z-fighting with other transparent objects
+  });
+
+  // Create mesh
+  const cylinder = new THREE.Mesh(geometry, material);
+
+  // Position the cylinder above the model
+  cylinder.position.set(
+    position.x,
+    position.y + 8, // Position above the model
+    position.z + 5
+  );
+
+  // Rotate to point downward
+  cylinder.rotation.x = Math.PI; // Rotate 180 degrees around X axis
+
+  // Initially invisible
+  cylinder.visible = false;
+
+  console.log('Simple spotlight cylinder created');
+  return cylinder;
+}
+
 // Load test models with sequential delays
 const loadTestModels = async () => {
   console.log('Loading test models...');
@@ -639,6 +685,9 @@ const loadTestModels = async () => {
   try {
     // Get model configurations
     const modelConfigs = getModelConfigs();
+
+    // Create an array to store spotlight cylinders
+    const spotlights = [];
 
     // Load each enabled model
     for (const config of modelConfigs) {
@@ -659,6 +708,30 @@ const loadTestModels = async () => {
         if (model) {
           scene.add(model.object);
           console.log(`Added ${config.path} to test scene`);
+
+          // Skip creating spotlight for dis-ball model
+          if (config.path.includes('dis-ball')) {
+            console.log(`Skipping spotlight for ${config.path} as requested`);
+            continue;
+          }
+
+          // Create a spotlight cylinder for this model
+          const spotlight = createSpotlightCylinder(
+            config.position,
+            config.path.includes('glb') ? 1.5 : 0.8 // Larger for GLB models
+          );
+
+          // Add to scene
+          scene.add(spotlight);
+
+          // Store reference to the spotlight
+          spotlights.push({
+            spotlight,
+            delay: config.delay + 500,
+            modelPath: config.path
+          });
+
+          console.log(`Added spotlight for ${config.path}`);
         }
       } catch (error) {
         console.error(`Failed to load model ${config.path}:`, error);
@@ -666,10 +739,38 @@ const loadTestModels = async () => {
       }
     }
 
+    // Show spotlights with the same delays as their models
+    spotlights.forEach(({ spotlight, delay, modelPath }) => {
+      setTimeout(() => {
+        console.log(`Showing spotlight for ${modelPath} after ${delay}ms`);
+        spotlight.visible = true;
+      }, delay);
+    });
+
     // Start the automatic reset cycle
     ModelManager.startResetCycle();
 
-    console.log('All test models loaded');
+    // Update the reset models function to also reset spotlights
+    const originalResetModels = ModelManager.resetModels;
+    ModelManager.resetModels = function () {
+      // Call the original reset function
+      originalResetModels.call(this);
+
+      // Hide all spotlights
+      spotlights.forEach(({ spotlight }) => {
+        spotlight.visible = false;
+      });
+
+      // Show spotlights again with their delays
+      spotlights.forEach(({ spotlight, delay, modelPath }) => {
+        setTimeout(() => {
+          console.log(`Showing spotlight for ${modelPath} after reset`);
+          spotlight.visible = true;
+        }, delay);
+      });
+    };
+
+    console.log('All test models and spotlights loaded');
   } catch (error) {
     console.error('Error loading test models:', error);
   }
@@ -726,13 +827,52 @@ const initializeAR = async () => {
     // Load models with the ModelManager
     const modelConfigs = getModelConfigs();
 
+    // Create an array to store spotlight cylinders
+    const spotlights = [];
+
     for (const config of modelConfigs) {
+      if (!config.enabled) {
+        console.log(`Skipping disabled model: ${config.path}`);
+        continue;
+      }
+
       try {
         console.log(`Loading model: ${config.path}`);
-        const model = await ModelManager.loadModel(config.path, config);
+        const model = await ModelManager.loadModel(config.path, {
+          position: config.position,
+          scale: config.scale,
+          visible: config.visible,
+          delay: config.delay
+        });
+
         if (model) {
+          // Add model to anchor group
           anchor.group.add(model.object);
           console.log(`Added ${config.path} to AR anchor`);
+
+          // Skip creating spotlight for dis-ball model
+          if (config.path.includes('dis-ball')) {
+            console.log(`Skipping spotlight for ${config.path} in AR mode as requested`);
+            continue;
+          }
+
+          // Create a spotlight cylinder for this model
+          const spotlight = createSpotlightCylinder(
+            config.position,
+            config.path.includes('glb') ? 1.5 : 0.8 // Larger for GLB models
+          );
+
+          // Add to anchor group
+          anchor.group.add(spotlight);
+
+          // Store reference to the spotlight
+          spotlights.push({
+            spotlight,
+            delay: config.delay,
+            modelPath: config.path
+          });
+
+          console.log(`Added spotlight for ${config.path} in AR mode`);
         }
       } catch (error) {
         console.error(`Failed to load model ${config.path}:`, error);
@@ -740,10 +880,39 @@ const initializeAR = async () => {
       }
     }
 
+    // Show spotlights with the same delays as their models
+    spotlights.forEach(({ spotlight, delay, modelPath }) => {
+      setTimeout(() => {
+        console.log(`Showing spotlight for ${modelPath} after ${delay}ms in AR mode`);
+        spotlight.visible = true;
+      }, delay);
+    });
+
+    // Update the reset models function to also reset spotlights in AR mode
+    const originalResetModels = ModelManager.resetModels;
+    ModelManager.resetModels = function () {
+      // Call the original reset function
+      originalResetModels.call(this);
+
+      // Hide all spotlights
+      spotlights.forEach(({ spotlight }) => {
+        spotlight.visible = false;
+      });
+
+      // Show spotlights again with their delays
+      spotlights.forEach(({ spotlight, delay, modelPath }) => {
+        setTimeout(() => {
+          console.log(`Showing spotlight for ${modelPath} after reset in AR mode`);
+          spotlight.visible = true;
+        }, delay);
+      });
+    };
+
     // Animation loop
     renderer.setAnimationLoop(() => {
       const delta = clock.getDelta();
       ModelManager.updateAnimations(delta);
+
       renderer.render(scene, camera);
     });
 
@@ -938,13 +1107,13 @@ window.addEventListener('error', (error) => {
 
 // Apply warm emissive material to dis-ball model
 function applyWarmEmissiveMaterial(object) {
-  console.log('Applying warm emissive material to dis-ball');
+  console.log('Applying simple warm emissive material to dis-ball');
 
   // Create a warm emissive material
   const warmEmissiveMaterial = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(0xffaa44),
-    emissive: new THREE.Color(0xffaaaa),
-    emissiveIntensity: 10, // Strong emissive effect
+    color: new THREE.Color(0xffffff), // Warm orange-yellow color
+    emissive: new THREE.Color(0xff6600), // Warm orange emissive color
+    emissiveIntensity: 3, // Strong emissive effect
     roughness: 0.3, // Slightly glossy
     side: THREE.DoubleSide // Render both sides
   });
@@ -959,45 +1128,9 @@ function applyWarmEmissiveMaterial(object) {
 
       // Apply the new material
       child.material = warmEmissiveMaterial;
-
-      // Store reference to the material for animation
-      child.userData.emissiveMaterial = warmEmissiveMaterial;
     }
   });
 
-  // Add pulsing animation to the object
-  object.userData.pulseAnimation = {
-    time: 0,
-    speed: 3, // Speed of pulsing
-    minIntensity: 0.5, // Minimum emissive intensity
-    maxIntensity: 1.2, // Maximum emissive intensity
-    update: function (delta) {
-      this.time += delta * this.speed;
-
-      // Calculate pulsing intensity using sine wave
-      const intensity = this.minIntensity + (Math.sin(this.time) * 0.5 + 0.5) * (this.maxIntensity - this.minIntensity);
-
-      // Apply to all meshes with emissive material
-      object.traverse(child => {
-        if (child.userData.emissiveMaterial) {
-          child.userData.emissiveMaterial.emissiveIntensity = intensity;
-        }
-      });
-    }
-  };
-
-  // Add update function to the object
-  const originalUpdateFunction = object.userData.update || function () { };
-  object.userData.update = function (delta) {
-    // Call original update function if it exists
-    originalUpdateFunction(delta);
-
-    // Update pulsing animation
-    if (this.pulseAnimation) {
-      this.pulseAnimation.update(delta);
-    }
-  };
-
-  console.log('Warm emissive material with pulsing effect applied');
+  console.log('Warm emissive material applied');
   return object;
 } 
