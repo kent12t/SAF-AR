@@ -540,7 +540,7 @@ const initTestScene = () => {
   console.log('Lighting added to scene');
 
   // Position camera
-  camera.position.set(0, 3, 15);
+  camera.position.set(0, 0, 5);
 
   // Animation loop
   const animate = () => {
@@ -571,8 +571,8 @@ const getModelConfigs = () => {
       id: 'army',
       name: 'Army AR',
       path: 'models/army-ar.glb',
-      position: { x: 1.5, y: 0, z: 1 },
-      scale: 1,
+      position: { x: 0.5, y: -1, z: .2 },
+      scale: 0.3,
       delay: 2000,
       visible: false,
       enabled: true
@@ -582,8 +582,8 @@ const getModelConfigs = () => {
       id: 'civilian',
       name: 'Civilian',
       path: 'models/civilian.fbx',
-      position: { x: 0, y: 0, z: 3 },
-      scale: 0.01,
+      position: { x: 0, y: -1, z: 1 },
+      scale: 0.003,
       delay: 100,
       visible: false,
       enabled: true
@@ -593,8 +593,8 @@ const getModelConfigs = () => {
       id: 'rsaf',
       name: 'RSAF AR',
       path: 'models/rsaf.fbx',
-      position: { x: -1.5, y: 0, z: 1 },
-      scale: 0.01,
+      position: { x: -0.5, y: -1, z: 0.5 },
+      scale: 0.003,
       delay: 3500,
       visible: false,
       enabled: true
@@ -604,8 +604,8 @@ const getModelConfigs = () => {
       id: 'dis',
       name: 'DIS AR',
       path: 'models/dis.glb',
-      position: { x: -3, y: 0, z: 0 },
-      scale: 1,
+      position: { x: -1, y: -1, z: 0 },
+      scale: 0.3,
       delay: 6500,
       visible: false,
       enabled: true
@@ -614,8 +614,8 @@ const getModelConfigs = () => {
       id: 'ball',
       name: 'DIS Ball',
       path: 'models/dis-ball.fbx',
-      position: { x: -3.1, y: 1.6, z: 1.4 },
-      scale: 0.007,
+      position: { x: -1, y: -0.6, z: 0.5 },
+      scale: 0.0021,
       delay: 11000,
       visible: false,
       enabled: true
@@ -625,8 +625,8 @@ const getModelConfigs = () => {
       id: 'navy',
       name: 'Navy AR',
       path: 'models/navy.fbx',
-      position: { x: 3, y: 0, z: 0 },
-      scale: 0.01,
+      position: { x: 1, y: -1, z: 0.3 },
+      scale: 0.003,
       delay: 5000,
       visible: false,
       enabled: true
@@ -826,6 +826,13 @@ const initializeAR = async () => {
 
     const anchor = mindarThree.addAnchor(0);
     console.log('Target anchor created');
+
+    // Apply transformations in the correct order: scale, rotation, position
+
+    anchor.group.scale.set(1, 1, 1);
+    anchor.group.position.set(0, 0, 0);
+
+    console.log('Applied anchor transformations in correct order: scale, rotation, position');
 
     // Add lighting
     const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
