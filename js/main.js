@@ -14,7 +14,6 @@ console.log('DOM elements initialized');
 
 // Global variables
 let mindarThree = null;
-let mixer = null;
 let clock = new THREE.Clock();
 let scene, camera, renderer;
 let testMode = true; // Default to test mode
@@ -642,9 +641,9 @@ function createSpotlightCylinder(position, scale = 1.0) {
   console.log('Creating simple spotlight cylinder at position:', position);
 
   // Create geometry - tapered cylinder (cone-like)
-  const radiusTop = 0.6; // Slightly smaller top
+  const radiusTop = 0.5; // Slightly smaller top
   const radiusBottom = 2;
-  const height = 15.0;
+  const height = 8.0;
   const radialSegments = 16;
   const geometry = new THREE.CylinderGeometry(
     radiusBottom,
@@ -655,10 +654,11 @@ function createSpotlightCylinder(position, scale = 1.0) {
 
   // Create simple emissive, transparent material
   const material = new THREE.MeshStandardMaterial({
+    // emissive: new THREE.Color(0xff4444),
     emissive: new THREE.Color(0xffbbaa),
     emissiveIntensity: 1,
     transparent: true,
-    opacity: 0.1,
+    opacity: 0.2,
     side: THREE.DoubleSide,
     depthWrite: false // Prevent z-fighting with other transparent objects
   });
@@ -669,8 +669,8 @@ function createSpotlightCylinder(position, scale = 1.0) {
   // Position the cylinder above the model
   cylinder.position.set(
     position.x,
-    position.y + 8, // Position above the model
-    position.z + 5
+    position.y + 3.2, // Position above the model
+    position.z + 0.2
   );
 
   // Rotate to point downward
