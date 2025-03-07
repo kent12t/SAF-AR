@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { MindARThree } from 'mindar-image-three';
 
 // DOM elements
@@ -12,7 +13,9 @@ const stopButton = document.getElementById('stopButton');
 let mindarThree = null;
 let clock = new THREE.Clock();
 let scene, camera, renderer;
-let testMode = false; // Default to AR mode (false) - change this manually if needed
+let orbitControls = null;
+let defaultCameraPosition = new THREE.Vector3(0, 0, 5);
+let testMode = false; // Default to test mode (true) - change to false for AR mode
 
 // Add window resize handler to ensure proper sizing
 window.addEventListener('resize', () => {
@@ -445,8 +448,8 @@ const ModelManager = {
 const initTestScene = () => {
   // Create scene, camera, and renderer
   scene = new THREE.Scene();
-  // Use a transparent background instead of a color
-  scene.background = null;
+  // Set black background
+  scene.background = new THREE.Color(0x000000);
 
   camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 
@@ -459,6 +462,7 @@ const initTestScene = () => {
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.setClearColor(0x000000, 0); // Set clear color with 0 alpha (fully transparent)
+  renderer.sortObjects = true; // Enable manual sorting of transparent objects
 
   const arContainer = document.getElementById('ar-container');
   if (!arContainer) {
@@ -477,11 +481,76 @@ const initTestScene = () => {
   scene.add(ambientLight);
 
   // Position camera
-  camera.position.set(0, 0, 5);
+  camera.position.copy(defaultCameraPosition);
+
+  // Add orbit controls for test mode
+  orbitControls = new OrbitControls(camera, renderer.domElement);
+  orbitControls.enableDamping = true; // Add smooth damping effect
+  orbitControls.dampingFactor = 0.05;
+  orbitControls.screenSpacePanning = false;
+  orbitControls.minDistance = 1;
+  orbitControls.maxDistance = 15;
+  orbitControls.maxPolarAngle = Math.PI / 1.5; // Limit rotation to prevent going below the scene
+
+  // Create a reset camera button
+  const resetCameraButton = document.createElement('button');
+  resetCameraButton.textContent = 'Reset Camera';
+  resetCameraButton.style.position = 'absolute';
+  resetCameraButton.style.bottom = '20px';
+  resetCameraButton.style.right = '20px';
+  resetCameraButton.style.zIndex = '1000';
+  resetCameraButton.style.padding = '10px 15px';
+  resetCameraButton.style.backgroundColor = '#007bff';
+  resetCameraButton.style.color = 'white';
+  resetCameraButton.style.border = 'none';
+  resetCameraButton.style.borderRadius = '5px';
+  resetCameraButton.style.cursor = 'pointer';
+  resetCameraButton.style.fontWeight = 'bold';
+  resetCameraButton.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
+
+  resetCameraButton.addEventListener('click', () => {
+    // Animate camera back to default position
+    const startPosition = camera.position.clone();
+    const startQuaternion = camera.quaternion.clone();
+    const endQuaternion = new THREE.Quaternion();
+    const duration = 1000; // 1 second
+    const startTime = Date.now();
+
+    function animateReset() {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+
+      // Use easing function for smooth animation
+      const easeProgress = 1 - Math.pow(1 - progress, 3); // Cubic ease out
+
+      // Interpolate position
+      camera.position.lerpVectors(startPosition, defaultCameraPosition, easeProgress);
+
+      // Interpolate rotation
+      THREE.Quaternion.slerp(startQuaternion, endQuaternion, camera.quaternion, easeProgress);
+
+      // Update orbit controls target
+      orbitControls.target.set(0, 0, 0);
+      orbitControls.update();
+
+      if (progress < 1) {
+        requestAnimationFrame(animateReset);
+      }
+    }
+
+    animateReset();
+  });
+
+  arContainer.appendChild(resetCameraButton);
 
   // Animation loop
   const animate = () => {
     requestAnimationFrame(animate);
+
+    // Update orbit controls
+    if (orbitControls) {
+      orbitControls.update();
+    }
 
     const delta = clock.getDelta();
     ModelManager.updateAnimations(delta);
@@ -585,9 +654,9 @@ function createSpotlightCylinder(position, scale = 1.0) {
   const material = new THREE.MeshStandardMaterial({
     // emissive: new THREE.Color(0xff4444),
     emissive: new THREE.Color(0xffbbaa),
-    emissiveIntensity: 1,
+    emissiveIntensity: 2,
     transparent: true,
-    opacity: 0.2,
+    opacity: 0.15,
     side: THREE.DoubleSide,
     depthWrite: false // Prevent z-fighting with other transparent objects
   });
@@ -616,6 +685,33 @@ const loadTestModels = async () => {
   try {
     // Get model configurations
     const modelConfigs = getModelConfigs();
+
+    // Create a single text box at the top of the scene
+    const topTextBox = createTextBox(['Our NSmen', 'EVER READY', 'with our lives'], {
+      x: 0,
+      y: 1.5, // Position at the top
+      z: 0.5
+    }, true);
+
+    // Add to scene
+    scene.add(topTextBox);
+    topTextBox.visible = true;
+
+    // Create a single text box at the bottom of the scene with multi-line text
+    const bottomTextBox = createTextBox([
+      'Our sons, brothers, fathers, spouses, co-workers, friends',
+      'and neighbours—remarkable individuals bound by an',
+      'unwavering commitment to answer the call of duty to',
+      'defend our nation at any time'
+    ], {
+      x: 0,
+      y: -2, // Position at the bottom, same as AR mode
+      z: 0.5
+    }, false);
+
+    // Add to scene
+    scene.add(bottomTextBox);
+    bottomTextBox.visible = true;
 
     // Create an array to store spotlight cylinders
     const spotlights = [];
@@ -691,6 +787,10 @@ const loadTestModels = async () => {
           spotlight.visible = true;
         }, delay);
       });
+
+      // Make sure text boxes remain visible
+      if (topTextBox) topTextBox.visible = true;
+      if (bottomTextBox) bottomTextBox.visible = true;
     };
   } catch (error) {
     console.error('Error loading test models:', error);
@@ -721,7 +821,8 @@ const initializeAR = async () => {
         antialias: true,
         alpha: true, // Enable transparency
         logarithmicDepthBuffer: true,
-        outputColorSpace: THREE.SRGBColorSpace
+        outputColorSpace: THREE.SRGBColorSpace,
+        sortObjects: true // Enable manual sorting of transparent objects
       },
       filterMinCF: 0.001, // Adjust tracking sensitivity
       filterBeta: 0.01,   // Adjust tracking stability
@@ -736,10 +837,6 @@ const initializeAR = async () => {
 
     const anchor = mindarThree.addAnchor(0);
 
-    // Apply transformations in the correct order: scale, rotation, position
-    anchor.group.scale.set(1, 1, 1);
-    anchor.group.position.set(0, 0, 0);
-
     // Add lighting
     const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
     directionalLight.position.set(1, 2, 3);
@@ -751,8 +848,8 @@ const initializeAR = async () => {
     // Create a single text box at the top of the scene
     const topTextBox = createTextBox(['Our NSmen', 'EVER READY', 'with our lives'], {
       x: 0,
-      y: 2, // Position at the top
-      z: 0
+      y: 1.5, // Position at the top
+      z: 3
     }, true);
 
     // Add to anchor group
@@ -766,8 +863,8 @@ const initializeAR = async () => {
       'defend our nation at any time'
     ], {
       x: 0,
-      y: -2.5, // Position at the bottom, slightly lower to accommodate more text
-      z: 0
+      y: -1.5, // Position at the bottom, same as AR mode
+      z: 3
     }, false);
 
     // Add to anchor group
@@ -831,6 +928,11 @@ const initializeAR = async () => {
         displayErrorMessage(`Failed to load ${config.path}`);
       }
     }
+
+
+    // Apply transformations in the correct order: scale, rotation, position
+    anchor.group.scale.set(1, 1, 1);
+    anchor.group.position.set(0, 0, 0);
 
     // Function to start animation sequence
     const startAnimationSequence = () => {
@@ -1162,6 +1264,12 @@ const stopAR = async () => {
 
     // Clean up renderer
     if (renderer) {
+      // Dispose of orbit controls if they exist
+      if (orbitControls) {
+        orbitControls.dispose();
+        orbitControls = null;
+      }
+
       renderer.dispose();
 
       // Clear the container
@@ -1248,40 +1356,31 @@ function createTextBox(text, position, isAbove = true) {
   // Create a group to hold all text meshes
   const textGroup = new THREE.Group();
 
-  // Adjust plane size based on whether it's top or bottom text
-  const planeWidth = isAbove ? 3 : 5;
-  const planeHeight = isAbove ? 1.5 : 2;
+  // Adjust background plane size based on whether it's top or bottom text
+  const planeWidth = isAbove ? 2.4 : 3;
+  const planeHeight = isAbove ? 1 : 0.8;
 
   const planeGeometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
-  const planeMaterial = new THREE.MeshBasicMaterial({
-    color: 0x000000,
+  const planeMaterial = new THREE.MeshStandardMaterial({
+    color: 0xdddddd,
     transparent: true,
-    opacity: 0.7,
-    side: THREE.DoubleSide
+    opacity: 0.4,
+    emissive: new THREE.Color(0xdddddd),
+    emissiveIntensity: 2,
+    side: THREE.DoubleSide,
+    depthTest: false, // Disable depth testing to always render on top
+    depthWrite: false // Don't write to depth buffer
   });
 
   const plane = new THREE.Mesh(planeGeometry, planeMaterial);
   textGroup.add(plane);
 
-  // Add a glowing outline to the plane
-  const glowMaterial = new THREE.MeshBasicMaterial({
-    color: 0x00aaff,
-    transparent: true,
-    opacity: 0.3,
-    side: THREE.DoubleSide
-  });
-
-  const glowPlane = new THREE.Mesh(
-    new THREE.PlaneGeometry(planeWidth + 0.1, planeHeight + 0.1),
-    glowMaterial
-  );
-  glowPlane.position.z = -0.01;
-  textGroup.add(glowPlane);
-
   // Create text using canvas
   // Create a canvas to render text
   const canvas = document.createElement('canvas');
   const context = canvas.getContext('2d');
+
+  // Use fixed canvas dimensions for consistent text rendering
   canvas.width = 1024;
   canvas.height = 512;
 
@@ -1301,7 +1400,7 @@ function createTextBox(text, position, isAbove = true) {
     context.fillText(text[0], canvas.width / 2, 100);
 
     // Second line: "EVER READY" - 72px Arial Black
-    context.fillStyle = '#00aaff';  // Blue color
+    context.fillStyle = '#ffffff';  // White
     context.font = '72px "Arial Black", sans-serif';
     context.fillText(text[1], canvas.width / 2, 180);
 
@@ -1314,11 +1413,11 @@ function createTextBox(text, position, isAbove = true) {
   } else {
     // BOTTOM TEXT BOX - Multi-line paragraph with regular Arial
     context.fillStyle = '#ffffff';  // White color
-    context.font = '48px Arial, sans-serif';  // Regular Arial, 48px
+    context.font = '32px Arial, sans-serif';  // Regular Arial, slightly smaller for more text
 
     // Handle multi-line text for bottom box
-    const maxWidth = 900;  // Maximum width for text wrapping
-    const lineHeight = 60;  // Space between lines
+    const maxWidth = 800;  // Maximum width for text wrapping
+    const lineHeight = 36;  // Space between lines
 
     // Split the text into words
     const words = text.join(' ').split(' ');
@@ -1346,21 +1445,41 @@ function createTextBox(text, position, isAbove = true) {
 
   // Create texture from canvas
   const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.needsUpdate = true;
+
   const textMaterial = new THREE.MeshBasicMaterial({
     map: texture,
     transparent: true,
-    side: THREE.DoubleSide
+    side: THREE.DoubleSide,
+    depthTest: false, // Disable depth testing to always render on top
+    depthWrite: false // Don't write to depth buffer
   });
 
+  // Create a separate plane for the text with fixed aspect ratio
+  // This ensures text doesn't get stretched regardless of background plane size
+  const textAspect = canvas.width / canvas.height;
+  let textPlaneWidth, textPlaneHeight;
+
+
+  textPlaneWidth = planeWidth * 1;  // Slightly smaller than background
+  textPlaneHeight = textPlaneWidth / textAspect;
+
   const textPlane = new THREE.Mesh(
-    new THREE.PlaneGeometry(planeWidth - 0.1, planeHeight - 0.1),
+    new THREE.PlaneGeometry(textPlaneWidth, textPlaneHeight),
     textMaterial
   );
   textPlane.position.z = 0.01;
+  textPlane.position.y = isAbove ? -0.2 : -0.3;
   textGroup.add(textPlane);
 
   // Position the text group
   textGroup.position.set(position.x, position.y, position.z);
+
+  // Set a high renderOrder to ensure it renders on top of other objects
+  textGroup.renderOrder = 999;
+  plane.renderOrder = 999;
+  textPlane.renderOrder = 1000;
 
   // Initially hide the text box
   textGroup.visible = false;
