@@ -7,7 +7,6 @@ import { MindARThree } from 'mindar-image-three';
 const loadingElement = document.querySelector('.loading');
 const startButton = document.getElementById('startButton');
 const stopButton = document.getElementById('stopButton');
-const testModeToggle = document.getElementById('testModeToggle');
 
 console.log('=== APP INITIALIZATION ===');
 console.log('DOM elements initialized');
@@ -16,21 +15,9 @@ console.log('DOM elements initialized');
 let mindarThree = null;
 let clock = new THREE.Clock();
 let scene, camera, renderer;
-let testMode = true; // Default to test mode
+let testMode = false; // Default to AR mode (false) - change this manually if needed
 
-// Set initial test mode from checkbox
-testMode = testModeToggle ? testModeToggle.checked : true;
-console.log('Initial test mode:', testMode);
-
-// Listen for test mode toggle changes
-if (testModeToggle) {
-  testModeToggle.addEventListener('change', (event) => {
-    testMode = event.target.checked;
-    console.log(`Test mode ${testMode ? 'enabled' : 'disabled'}`);
-  });
-} else {
-  console.warn('Test mode toggle element not found!');
-}
+console.log('Test mode set to:', testMode);
 
 // Helper functions for model fixes
 // Fix material issues
@@ -1174,7 +1161,6 @@ const startAR = async () => {
         // Ask user if they want to fall back to test mode
         if (confirm('AR mode failed. Would you like to try test mode instead?')) {
           console.log('Falling back to test mode');
-          if (testModeToggle) testModeToggle.checked = true;
           testMode = true;
 
           // Try test mode
@@ -1233,7 +1219,6 @@ window.addEventListener('load', () => {
   console.log('- Loading element:', loadingElement ? 'found' : 'missing');
   console.log('- Start button:', startButton ? 'found' : 'missing');
   console.log('- Stop button:', stopButton ? 'found' : 'missing');
-  console.log('- Test mode toggle:', testModeToggle ? 'found' : 'missing');
   console.log('- AR container:', document.getElementById('ar-container') ? 'found' : 'missing');
 
   // Check if files exist
