@@ -827,7 +827,8 @@ const initializeAR = async () => {
       filterMinCF: 0.001, // Adjust tracking sensitivity
       filterBeta: 0.01,   // Adjust tracking stability
       missTolerance: 5,   // Number of frames to keep showing object when target is lost
-      warmupTolerance: 5  // Number of frames to wait before showing object when target is found
+      warmupTolerance: 5,  // Number of frames to wait before showing object when target is found
+      mirrorVideo: true    // Mirror the camera feed like a selfie camera
     });
 
     const { renderer, scene, camera } = mindarThree;
