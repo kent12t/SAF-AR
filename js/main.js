@@ -19,6 +19,25 @@ let testMode = false; // Default to AR mode (false) - change this manually if ne
 
 console.log('Test mode set to:', testMode);
 
+// Add window resize handler to ensure proper sizing
+window.addEventListener('resize', () => {
+  if (renderer) {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    // Update renderer size
+    renderer.setSize(width, height);
+
+    // Update camera aspect ratio if it exists
+    if (camera && camera.aspect) {
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+    }
+
+    console.log(`Window resized: ${width}x${height}`);
+  }
+});
+
 // Helper functions for model fixes
 // Fix material issues
 function fixMaterial(material) {
