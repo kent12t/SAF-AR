@@ -748,6 +748,34 @@ const initializeAR = async () => {
     const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
     scene.add(ambientLight);
 
+    // Create a single text box at the top of the scene
+    const topTextBox = createTextBox(['Our NSmen', 'EVER READY', 'with our lives'], {
+      x: 0,
+      y: 2, // Position at the top
+      z: 0
+    }, true);
+
+    // Add to anchor group
+    anchor.group.add(topTextBox);
+
+    // Create a single text box at the bottom of the scene with multi-line text
+    const bottomTextBox = createTextBox([
+      'Our sons, brothers, fathers, spouses, co-workers, friends',
+      'and neighbours—remarkable individuals bound by an',
+      'unwavering commitment to answer the call of duty to',
+      'defend our nation at any time'
+    ], {
+      x: 0,
+      y: -2.5, // Position at the bottom, slightly lower to accommodate more text
+      z: 0
+    }, false);
+
+    // Add to anchor group
+    anchor.group.add(bottomTextBox);
+
+    // Store references to show/hide with target tracking
+    const textBoxes = [topTextBox, bottomTextBox];
+
     // Load models with the ModelManager
     const modelConfigs = getModelConfigs();
 
@@ -857,9 +885,9 @@ const initializeAR = async () => {
           if (ModelManager.actions[path]) {
             Object.keys(ModelManager.actions[path]).forEach(actionName => {
               const action = ModelManager.actions[path][actionName];
-              action.paused = false;
               action.reset();
               action.play();
+              action.paused = false;
             });
           }
         }, model.options.delay);
@@ -918,10 +946,20 @@ const initializeAR = async () => {
     // Add event listeners for target found/lost
     anchor.onTargetFound = () => {
       startAnimationSequence();
+
+      // Show text boxes
+      textBoxes.forEach(textBox => {
+        textBox.visible = true;
+      });
     };
 
     anchor.onTargetLost = () => {
       stopAnimationSequence();
+
+      // Hide text boxes
+      textBoxes.forEach(textBox => {
+        textBox.visible = false;
+      });
     };
 
     // Animation loop
@@ -1203,4 +1241,129 @@ function applyWarmEmissiveMaterial(object) {
     }
   });
   return object;
+}
+
+// Create a glowy text box with multiple lines of different sizes
+function createTextBox(text, position, isAbove = true) {
+  // Create a group to hold all text meshes
+  const textGroup = new THREE.Group();
+
+  // Adjust plane size based on whether it's top or bottom text
+  const planeWidth = isAbove ? 3 : 5;
+  const planeHeight = isAbove ? 1.5 : 2;
+
+  const planeGeometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
+  const planeMaterial = new THREE.MeshBasicMaterial({
+    color: 0x000000,
+    transparent: true,
+    opacity: 0.7,
+    side: THREE.DoubleSide
+  });
+
+  const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+  textGroup.add(plane);
+
+  // Add a glowing outline to the plane
+  const glowMaterial = new THREE.MeshBasicMaterial({
+    color: 0x00aaff,
+    transparent: true,
+    opacity: 0.3,
+    side: THREE.DoubleSide
+  });
+
+  const glowPlane = new THREE.Mesh(
+    new THREE.PlaneGeometry(planeWidth + 0.1, planeHeight + 0.1),
+    glowMaterial
+  );
+  glowPlane.position.z = -0.01;
+  textGroup.add(glowPlane);
+
+  // Create text using canvas
+  // Create a canvas to render text
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+  canvas.width = 1024;
+  canvas.height = 512;
+
+  // Fill background with transparent color
+  context.fillStyle = 'rgba(0, 0, 0, 0)';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Set text alignment
+  context.textAlign = 'center';
+
+  if (isAbove) {
+    // TOP TEXT BOX - Three lines with different sizes
+
+    // First line: "Our NSmen" - 48px Arial Black
+    context.fillStyle = '#ffffff';  // White color
+    context.font = '48px "Arial Black", sans-serif';
+    context.fillText(text[0], canvas.width / 2, 100);
+
+    // Second line: "EVER READY" - 72px Arial Black
+    context.fillStyle = '#00aaff';  // Blue color
+    context.font = '72px "Arial Black", sans-serif';
+    context.fillText(text[1], canvas.width / 2, 180);
+
+    // Third line: "with our lives" - 48px Arial Black
+    context.fillStyle = '#ffffff';  // White color
+    context.font = '48px "Arial Black", sans-serif';
+    if (text[2]) {
+      context.fillText(text[2], canvas.width / 2, 260);
+    }
+  } else {
+    // BOTTOM TEXT BOX - Multi-line paragraph with regular Arial
+    context.fillStyle = '#ffffff';  // White color
+    context.font = '48px Arial, sans-serif';  // Regular Arial, 48px
+
+    // Handle multi-line text for bottom box
+    const maxWidth = 900;  // Maximum width for text wrapping
+    const lineHeight = 60;  // Space between lines
+
+    // Split the text into words
+    const words = text.join(' ').split(' ');
+    let line = '';
+    let y = 100;  // Starting y position
+
+    // Create wrapped text
+    for (let i = 0; i < words.length; i++) {
+      const testLine = line + words[i] + ' ';
+      const metrics = context.measureText(testLine);
+      const testWidth = metrics.width;
+
+      if (testWidth > maxWidth && i > 0) {
+        context.fillText(line, canvas.width / 2, y);
+        line = words[i] + ' ';
+        y += lineHeight;
+      } else {
+        line = testLine;
+      }
+    }
+
+    // Draw the last line
+    context.fillText(line, canvas.width / 2, y);
+  }
+
+  // Create texture from canvas
+  const texture = new THREE.CanvasTexture(canvas);
+  const textMaterial = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    side: THREE.DoubleSide
+  });
+
+  const textPlane = new THREE.Mesh(
+    new THREE.PlaneGeometry(planeWidth - 0.1, planeHeight - 0.1),
+    textMaterial
+  );
+  textPlane.position.z = 0.01;
+  textGroup.add(textPlane);
+
+  // Position the text group
+  textGroup.position.set(position.x, position.y, position.z);
+
+  // Initially hide the text box
+  textGroup.visible = false;
+
+  return textGroup;
 } 
