@@ -8,16 +8,11 @@ const loadingElement = document.querySelector('.loading');
 const startButton = document.getElementById('startButton');
 const stopButton = document.getElementById('stopButton');
 
-console.log('=== APP INITIALIZATION ===');
-console.log('DOM elements initialized');
-
 // Global variables
 let mindarThree = null;
 let clock = new THREE.Clock();
 let scene, camera, renderer;
 let testMode = false; // Default to AR mode (false) - change this manually if needed
-
-console.log('Test mode set to:', testMode);
 
 // Add window resize handler to ensure proper sizing
 window.addEventListener('resize', () => {
@@ -33,19 +28,14 @@ window.addEventListener('resize', () => {
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
     }
-
-    console.log(`Window resized: ${width}x${height}`);
   }
 });
 
 // Helper functions for model fixes
 // Fix material issues
 function fixMaterial(material) {
-  console.log('Fixing material:', material.name || 'unnamed');
-
   // Convert MeshPhongMaterial to MeshStandardMaterial for better PBR
   if (material.isMeshPhongMaterial) {
-    console.log('Converting MeshPhongMaterial to MeshStandardMaterial');
     const standardMaterial = new THREE.MeshStandardMaterial();
 
     // Copy basic properties
@@ -70,8 +60,6 @@ function fixMaterial(material) {
       standardMaterial.normalMap = material.normalMap;
       standardMaterial.normalScale.copy(material.normalScale);
     }
-
-    console.log('Created MeshStandardMaterial:', standardMaterial);
     return standardMaterial;
   }
 
@@ -100,15 +88,11 @@ function fixMaterial(material) {
 
 // Fix geometry issues
 function fixGeometry(geometry) {
-  console.log('Checking geometry for issues');
-
   // Check and fix normal vectors if needed
   if (geometry.attributes.normal) {
-    console.log('Geometry has normal attributes');
     geometry.computeVertexNormals(); // Recompute normals
     geometry.attributes.normal.needsUpdate = true;
   } else {
-    console.log('Computing normals for geometry without normals');
     geometry.computeVertexNormals();
   }
 
@@ -128,8 +112,6 @@ const ModelManager = {
 
   // Load a model from the given path with options
   async loadModel(path, options = {}) {
-    console.log(`Loading model: ${path} with options:`, options);
-
     // Default options
     const defaultOptions = {
       position: { x: 0, y: 0, z: 0 },
@@ -141,7 +123,6 @@ const ModelManager = {
 
     // Merge options with defaults
     const modelOptions = { ...defaultOptions, ...options };
-    console.log(`Final model options for ${path}:`, modelOptions);
 
     try {
       // Check if file exists
@@ -151,7 +132,6 @@ const ModelManager = {
           console.error(`Model file not found: ${path}`);
           throw new Error(`Model file not found: ${path}`);
         }
-        console.log(`Model file exists: ${path}`);
       } catch (error) {
         console.error(`Error checking model file: ${path}`, error);
         throw new Error(`Cannot access model file: ${path}`);
@@ -162,22 +142,18 @@ const ModelManager = {
       let animations = [];
 
       if (path.toLowerCase().endsWith('.fbx')) {
-        console.log(`Loading FBX model: ${path}`);
         const loader = new FBXLoader();
         object = await loader.loadAsync(path);
 
         if (object.animations && object.animations.length > 0) {
-          console.log(`FBX has ${object.animations.length} animations`);
           animations = object.animations;
         }
       } else if (path.toLowerCase().endsWith('.glb') || path.toLowerCase().endsWith('.gltf')) {
-        console.log(`Loading GLTF/GLB model: ${path}`);
         const loader = new GLTFLoader();
         const gltf = await loader.loadAsync(path);
         object = gltf.scene;
 
         if (gltf.animations && gltf.animations.length > 0) {
-          console.log(`GLTF/GLB has ${gltf.animations.length} animations`);
           animations = gltf.animations;
         }
       } else {
@@ -202,13 +178,11 @@ const ModelManager = {
 
       // Check if this is the dis-ball model and apply special material
       if (path.includes('dis-ball')) {
-        console.log('Detected dis-ball model, applying warm emissive material');
         object = applyWarmEmissiveMaterial(object);
       } else {
         // Fix materials for other models
         object.traverse((child) => {
           if (child.isMesh) {
-            console.log(`Fixing materials for mesh: ${child.name}`);
             child.material = fixMaterial(child.material);
 
             // Fix geometry if needed
@@ -224,7 +198,6 @@ const ModelManager = {
 
       // Create animation mixer if there are animations
       if (animations.length > 0) {
-        console.log(`Setting up animations for ${path}`);
         const mixer = new THREE.AnimationMixer(object);
         this.mixers[path] = mixer;
 
@@ -235,8 +208,6 @@ const ModelManager = {
         const actions = {};
         animations.forEach((animation, index) => {
           const actionName = animation.name || `animation_${index}`;
-          console.log(`Creating action for animation: ${actionName}`);
-
           // Create the action
           const action = mixer.clipAction(animation);
 
@@ -252,11 +223,9 @@ const ModelManager = {
         });
 
         this.actions[path] = actions;
-        console.log(`Created ${Object.keys(actions).length} animation actions for ${path}`);
 
         // Set up animation finished callback
         mixer.addEventListener('finished', (e) => {
-          console.log(`Animation finished for ${path}`);
           // Animation has completed its single play
         });
       }
@@ -267,8 +236,6 @@ const ModelManager = {
         options: modelOptions,
         animations
       };
-
-      console.log(`Model loaded successfully: ${path}`);
 
       // If there's a delay and the model should be initially hidden, set up delayed visibility
       if (modelOptions.delay > 0 && !modelOptions.visible) {
@@ -284,11 +251,9 @@ const ModelManager = {
 
   // Fix animations for specific models
   fixAnimations(animations, path) {
-    console.log(`Checking if animations need fixing for ${path}`);
 
     // Check if this is the Army AR model that needs fixing
     if (path.includes('ARMY AR')) {
-      console.log('Fixing Army AR animations');
       return animations.map(animation => this.fixArmyAnimations(animation));
     }
 
@@ -297,8 +262,6 @@ const ModelManager = {
 
   // Fix Army AR animations
   fixArmyAnimations(animation) {
-    console.log(`Fixing animation: ${animation.name || 'unnamed'}`);
-
     // Clone the animation to avoid modifying the original
     const fixedAnimation = animation.clone();
 
@@ -308,8 +271,6 @@ const ModelManager = {
 
       // Fix quaternion tracks (rotations)
       if (track.name.includes('quaternion')) {
-        console.log(`Fixing quaternion track: ${track.name}`);
-
         // Adjust quaternion values if needed
         // This is where specific fixes for the Army AR model would go
       }
@@ -340,21 +301,16 @@ const ModelManager = {
       return;
     }
 
-    console.log(`Setting up model ${path} to show after ${delay}ms delay`);
-
     // In AR mode, we'll handle showing models through the animation sequence
     if (!testMode && mindarThree) {
-      console.log(`In AR mode, model ${path} will be shown by the animation sequence`);
       return;
     }
 
     setTimeout(() => {
-      console.log(`Showing model ${path} after delay`);
       this.models[path].object.visible = true;
 
       // Start animations when the model becomes visible
       if (this.actions[path]) {
-        console.log(`Starting animations for ${path}`);
         Object.keys(this.actions[path]).forEach(actionName => {
           const action = this.actions[path][actionName];
 
@@ -362,8 +318,6 @@ const ModelManager = {
           action.reset();
           action.paused = false;
           action.play();
-
-          console.log(`Started animation: ${actionName}`);
         });
       }
     }, delay);
@@ -375,13 +329,10 @@ const ModelManager = {
       console.warn(`Cannot hide model ${path}: not loaded`);
       return;
     }
-
-    console.log(`Hiding model ${path}`);
     this.models[path].object.visible = false;
 
     // Pause animations when the model is hidden
     if (this.actions[path]) {
-      console.log(`Pausing animations for ${path}`);
       Object.keys(this.actions[path]).forEach(actionName => {
         const action = this.actions[path][actionName];
         action.paused = true;
@@ -391,7 +342,6 @@ const ModelManager = {
 
   // Hide all models
   hideAllModels() {
-    console.log('Hiding all models');
     Object.keys(this.models).forEach(path => {
       this.hideModel(path);
     });
@@ -399,8 +349,6 @@ const ModelManager = {
 
   // Reset all models (hide and then show with original delays)
   resetModels() {
-    console.log('Resetting all models');
-
     // First hide all models
     this.hideAllModels();
 
@@ -416,17 +364,16 @@ const ModelManager = {
         this.mixers[path] = newMixer;
 
         // Set up animation finished callback
-        newMixer.addEventListener('finished', (e) => {
-          console.log(`Animation finished for ${path}`);
-          // Animation has completed its single play
-        });
+        // newMixer.addEventListener('finished', (e) => {
+        //   console.log(`Animation finished for ${path}`);
+        //   // Animation has completed its single play
+        // });
 
         // Recreate all actions
         if (model.animations && model.animations.length > 0) {
           const actions = {};
           model.animations.forEach((animation, index) => {
             const actionName = animation.name || `animation_${index}`;
-            console.log(`Recreating action for animation: ${actionName}`);
 
             // Create the action
             const action = newMixer.clipAction(animation);
@@ -457,8 +404,6 @@ const ModelManager = {
 
   // Start the automatic reset cycle
   startResetCycle() {
-    console.log(`Starting reset cycle with interval of ${this.cycleInterval}ms`);
-
     // Clear any existing timer
     if (this.cycleTimer) {
       clearInterval(this.cycleTimer);
@@ -466,14 +411,12 @@ const ModelManager = {
 
     // Set up the interval timer
     this.cycleTimer = setInterval(() => {
-      console.log('Reset cycle triggered');
       this.resetModels();
     }, this.cycleInterval);
   },
 
   // Stop the automatic reset cycle
   stopResetCycle() {
-    console.log('Stopping reset cycle');
     if (this.cycleTimer) {
       clearInterval(this.cycleTimer);
       this.cycleTimer = null;
@@ -482,14 +425,11 @@ const ModelManager = {
 
   // Clear all models
   clearModels() {
-    console.log('Clearing all models');
-
     // Stop the reset cycle
     this.stopResetCycle();
 
     // Dispose mixers
     Object.keys(this.mixers).forEach(path => {
-      console.log(`Disposing mixer for ${path}`);
       delete this.mixers[path];
     });
 
@@ -498,23 +438,17 @@ const ModelManager = {
 
     // Clear models
     this.models = {};
-
-    console.log('All models cleared');
   }
 };
 
 // Initialize Three.js scene for test mode
 const initTestScene = () => {
-  console.log('Initializing test scene...');
-
   // Create scene, camera, and renderer
   scene = new THREE.Scene();
   // Use a transparent background instead of a color
   scene.background = null;
 
   camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-
-  console.log('Test scene created, setting up renderer...');
 
   renderer = new THREE.WebGLRenderer({
     antialias: true,
@@ -533,7 +467,6 @@ const initTestScene = () => {
   }
 
   arContainer.appendChild(renderer.domElement);
-  console.log('Renderer attached to DOM');
 
   // Add lighting
   const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
@@ -542,7 +475,6 @@ const initTestScene = () => {
 
   const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
   scene.add(ambientLight);
-  console.log('Lighting added to scene');
 
   // Position camera
   camera.position.set(0, 0, 5);
@@ -558,16 +490,11 @@ const initTestScene = () => {
   };
 
   animate();
-  console.log('Animation loop started');
-
-  console.log('Test scene initialization complete');
   return { scene, camera, renderer };
 };
 
 // Get model configurations
 const getModelConfigs = () => {
-  console.log('Getting model configurations...');
-
   // Model configurations - edit these values to control model appearance and timing
   const configs = [
 
@@ -637,15 +564,11 @@ const getModelConfigs = () => {
       enabled: true
     },
   ];
-
-  console.log(`Returning ${configs.length} model configurations`);
   return configs;
 };
 
 // Create a simple spotlight cylinder without animations
 function createSpotlightCylinder(position, scale = 1.0) {
-  console.log('Creating simple spotlight cylinder at position:', position);
-
   // Create geometry - tapered cylinder (cone-like)
   const radiusTop = 0.5; // Slightly smaller top
   const radiusBottom = 2;
@@ -685,14 +608,11 @@ function createSpotlightCylinder(position, scale = 1.0) {
   // Initially invisible
   cylinder.visible = false;
 
-  console.log('Simple spotlight cylinder created');
   return cylinder;
 }
 
 // Load test models with sequential delays
 const loadTestModels = async () => {
-  console.log('Loading test models...');
-
   try {
     // Get model configurations
     const modelConfigs = getModelConfigs();
@@ -703,12 +623,10 @@ const loadTestModels = async () => {
     // Load each enabled model
     for (const config of modelConfigs) {
       if (!config.enabled) {
-        console.log(`Skipping disabled model: ${config.path}`);
         continue;
       }
 
       try {
-        console.log(`Loading model: ${config.path}`);
         const model = await ModelManager.loadModel(config.path, {
           position: config.position,
           scale: config.scale,
@@ -718,11 +636,9 @@ const loadTestModels = async () => {
 
         if (model) {
           scene.add(model.object);
-          console.log(`Added ${config.path} to test scene`);
 
           // Skip creating spotlight for dis-ball model
           if (config.path.includes('dis-ball')) {
-            console.log(`Skipping spotlight for ${config.path} as requested`);
             continue;
           }
 
@@ -741,8 +657,6 @@ const loadTestModels = async () => {
             delay: config.delay + 500,
             modelPath: config.path
           });
-
-          console.log(`Added spotlight for ${config.path}`);
         }
       } catch (error) {
         console.error(`Failed to load model ${config.path}:`, error);
@@ -753,7 +667,6 @@ const loadTestModels = async () => {
     // Show spotlights with the same delays as their models
     spotlights.forEach(({ spotlight, delay, modelPath }) => {
       setTimeout(() => {
-        console.log(`Showing spotlight for ${modelPath} after ${delay}ms`);
         spotlight.visible = true;
       }, delay);
     });
@@ -775,13 +688,10 @@ const loadTestModels = async () => {
       // Show spotlights again with their delays
       spotlights.forEach(({ spotlight, delay, modelPath }) => {
         setTimeout(() => {
-          console.log(`Showing spotlight for ${modelPath} after reset`);
           spotlight.visible = true;
         }, delay);
       });
     };
-
-    console.log('All test models and spotlights loaded');
   } catch (error) {
     console.error('Error loading test models:', error);
   }
@@ -789,8 +699,6 @@ const loadTestModels = async () => {
 
 // Initialize MindAR with target tracking
 const initializeAR = async () => {
-  console.log('Initializing AR mode...');
-
   try {
     // Check if target file exists
     try {
@@ -799,13 +707,11 @@ const initializeAR = async () => {
         console.error('Target file does not exist or is not accessible');
         throw new Error('Target file missing');
       }
-      console.log('Target file exists and is accessible');
     } catch (error) {
       console.error('Error checking target file:', error);
       throw new Error('Cannot access target file');
     }
 
-    console.log('Creating MindAR instance...');
     mindarThree = new MindARThree({
       container: document.querySelector("#ar-container"),
       imageTargetSrc: 'targets/targets.mind',
@@ -822,23 +728,17 @@ const initializeAR = async () => {
       missTolerance: 5,   // Number of frames to keep showing object when target is lost
       warmupTolerance: 5  // Number of frames to wait before showing object when target is found
     });
-    console.log('MindAR instance created');
 
     const { renderer, scene, camera } = mindarThree;
-    console.log('Got scene, camera, and renderer from MindAR');
 
     // Ensure transparent background
     renderer.setClearColor(0x000000, 0); // Set clear color with 0 alpha (fully transparent)
 
     const anchor = mindarThree.addAnchor(0);
-    console.log('Target anchor created');
 
     // Apply transformations in the correct order: scale, rotation, position
-
     anchor.group.scale.set(1, 1, 1);
     anchor.group.position.set(0, 0, 0);
-
-    console.log('Applied anchor transformations in correct order: scale, rotation, position');
 
     // Add lighting
     const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
@@ -847,7 +747,6 @@ const initializeAR = async () => {
 
     const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
     scene.add(ambientLight);
-    console.log('Lighting added to AR scene');
 
     // Load models with the ModelManager
     const modelConfigs = getModelConfigs();
@@ -863,12 +762,10 @@ const initializeAR = async () => {
 
     for (const config of modelConfigs) {
       if (!config.enabled) {
-        console.log(`Skipping disabled model: ${config.path}`);
         continue;
       }
 
       try {
-        console.log(`Loading model: ${config.path}`);
         const model = await ModelManager.loadModel(config.path, {
           position: config.position,
           scale: config.scale,
@@ -879,11 +776,9 @@ const initializeAR = async () => {
         if (model) {
           // Add model to anchor group
           anchor.group.add(model.object);
-          console.log(`Added ${config.path} to AR anchor`);
 
           // Skip creating spotlight for dis-ball model
           if (config.path.includes('dis-ball')) {
-            console.log(`Skipping spotlight for ${config.path} in AR mode as requested`);
             continue;
           }
 
@@ -902,8 +797,6 @@ const initializeAR = async () => {
             delay: config.delay,
             modelPath: config.path
           });
-
-          console.log(`Added spotlight for ${config.path} in AR mode`);
         }
       } catch (error) {
         console.error(`Failed to load model ${config.path}:`, error);
@@ -914,17 +807,14 @@ const initializeAR = async () => {
     // Function to start animation sequence
     const startAnimationSequence = () => {
       if (animationSequenceStarted) {
-        console.log('Animation sequence already started, ignoring');
         return;
       }
 
-      console.log('Target found! Starting animation sequence...');
       animationSequenceStarted = true;
 
       // Clear any existing timeouts (just in case)
       timeoutIds.forEach(id => {
         clearTimeout(id);
-        console.log(`Cleared existing timeout ID: ${id}`);
       });
       timeoutIds.length = 0;
 
@@ -958,16 +848,13 @@ const initializeAR = async () => {
         const timeoutId = setTimeout(() => {
           // Check if animation sequence is still active
           if (!animationSequenceStarted) {
-            console.log(`Animation sequence stopped, not showing ${path}`);
             return;
           }
 
-          console.log(`Showing model ${path} after ${model.options.delay}ms in AR mode`);
           model.object.visible = true;
 
           // Start animations when the model becomes visible
           if (ModelManager.actions[path]) {
-            console.log(`Starting animations for ${path}`);
             Object.keys(ModelManager.actions[path]).forEach(actionName => {
               const action = ModelManager.actions[path][actionName];
               action.paused = false;
@@ -977,7 +864,6 @@ const initializeAR = async () => {
           }
         }, model.options.delay);
 
-        console.log(`Set timeout ID ${timeoutId} for model ${path} with delay ${model.options.delay}ms`);
         timeoutIds.push(timeoutId);
       });
 
@@ -986,15 +872,11 @@ const initializeAR = async () => {
         const timeoutId = setTimeout(() => {
           // Check if animation sequence is still active
           if (!animationSequenceStarted) {
-            console.log(`Animation sequence stopped, not showing spotlight for ${modelPath}`);
             return;
           }
 
-          console.log(`Showing spotlight for ${modelPath} after ${delay}ms in AR mode`);
           spotlight.visible = true;
         }, delay);
-
-        console.log(`Set timeout ID ${timeoutId} for spotlight of ${modelPath} with delay ${delay}ms`);
         timeoutIds.push(timeoutId);
       });
     };
@@ -1002,14 +884,11 @@ const initializeAR = async () => {
     // Function to stop animation sequence
     const stopAnimationSequence = () => {
       if (!animationSequenceStarted) return;
-
-      console.log('Target lost! Stopping animation sequence...');
       animationSequenceStarted = false;
 
       // Clear all timeouts
       timeoutIds.forEach(id => {
         clearTimeout(id);
-        console.log(`Cleared timeout ID: ${id}`);
       });
       timeoutIds.length = 0;
 
@@ -1017,12 +896,10 @@ const initializeAR = async () => {
       Object.keys(ModelManager.models).forEach(path => {
         const model = ModelManager.models[path];
         if (model && model.object) {
-          console.log(`Hiding model ${path} due to target loss`);
           model.object.visible = false;
 
           // Pause and reset animations
           if (ModelManager.actions[path]) {
-            console.log(`Stopping animations for ${path}`);
             Object.keys(ModelManager.actions[path]).forEach(actionName => {
               const action = ModelManager.actions[path][actionName];
               action.paused = true;
@@ -1034,7 +911,6 @@ const initializeAR = async () => {
 
       // Hide all spotlights immediately
       spotlights.forEach(({ spotlight, modelPath }) => {
-        console.log(`Hiding spotlight for ${modelPath} due to target loss`);
         spotlight.visible = false;
       });
     };
@@ -1058,7 +934,6 @@ const initializeAR = async () => {
 
     // Add cleanup function to mindarThree
     mindarThree.cleanup = () => {
-      console.log('Cleaning up AR resources...');
       stopAnimationSequence();
 
       // Remove event listeners
@@ -1104,7 +979,6 @@ function displayErrorMessage(message) {
 
 // Start AR experience
 const startAR = async () => {
-  console.log('Starting AR experience...');
   try {
     // Show loading screen
     if (loadingElement) {
@@ -1114,17 +988,14 @@ const startAR = async () => {
 
     // Clean up any existing scene
     if (renderer) {
-      console.log('Disposing previous renderer');
       renderer.dispose();
       document.getElementById('ar-container').innerHTML = '';
     }
 
     // Clear any existing models
-    console.log('Clearing any existing models');
     ModelManager.clearModels();
 
     if (testMode) {
-      console.log('Running in test mode');
       // Initialize test scene without AR
       const result = initTestScene();
 
@@ -1140,30 +1011,24 @@ const startAR = async () => {
       // Ensure transparent background in test mode too
       renderer.setClearColor(0x000000, 0);
 
-      console.log('Test scene initialized, loading models...');
       await loadTestModels();
     } else {
-      console.log('Running in AR mode');
       try {
         // Request camera permissions explicitly
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ video: true });
           // Stop the stream immediately, MindAR will request it again
           stream.getTracks().forEach(track => track.stop());
-          console.log('Camera permission granted');
         } catch (cameraError) {
           console.error('Camera permission denied:', cameraError);
           throw new Error('Camera permission denied. Please allow camera access to use AR mode.');
         }
 
         // Initialize AR with target tracking
-        console.log('Initializing AR mode...');
         mindarThree = await initializeAR();
-        console.log('Starting MindAR...');
 
         try {
           await mindarThree.start();
-          console.log('MindAR started successfully');
         } catch (startError) {
           console.error('Error starting MindAR:', startError);
           throw new Error('Failed to start camera. Please check camera permissions and try again.');
@@ -1179,7 +1044,6 @@ const startAR = async () => {
 
         // Ask user if they want to fall back to test mode
         if (confirm('AR mode failed. Would you like to try test mode instead?')) {
-          console.log('Falling back to test mode');
           testMode = true;
 
           // Try test mode
@@ -1201,8 +1065,6 @@ const startAR = async () => {
         }
       }
     }
-
-    console.log('AR experience started successfully');
 
     // Hide loading screen
     if (loadingElement) {
@@ -1231,36 +1093,19 @@ const startAR = async () => {
 
 // Directly initialize on page load to diagnose loading issues
 window.addEventListener('load', () => {
-  console.log('Page loaded, running initial diagnostics...');
-
-  // Check if DOM elements exist
-  console.log('Checking UI elements:');
-  console.log('- Loading element:', loadingElement ? 'found' : 'missing');
-  console.log('- Start button:', startButton ? 'found' : 'missing');
-  console.log('- Stop button:', stopButton ? 'found' : 'missing');
-  console.log('- AR container:', document.getElementById('ar-container') ? 'found' : 'missing');
-
   // Check if files exist
   Promise.all([
     fetch('models/', { method: 'HEAD' }).catch(() => ({ ok: false, status: 404 })),
     fetch('targets/', { method: 'HEAD' }).catch(() => ({ ok: false, status: 404 })),
     fetch('js/main.js', { method: 'HEAD' }).catch(() => ({ ok: false, status: 404 }))
-  ]).then(responses => {
-    console.log('File access checks:');
-    console.log('- models/ directory:', responses[0].ok ? 'accessible' : `inaccessible (${responses[0].status})`);
-    console.log('- targets/ directory:', responses[1].ok ? 'accessible' : `inaccessible (${responses[1].status})`);
-    console.log('- js/main.js:', responses[2].ok ? 'accessible' : `inaccessible (${responses[2].status})`);
-  });
+  ]);
 });
 
 // Stop AR experience
 const stopAR = async () => {
-  console.log('Stopping AR experience...');
-
   try {
     // Stop MindAR if in AR mode
     if (mindarThree && !testMode) {
-      console.log('Stopping MindAR...');
 
       // Call cleanup function to clear timeouts and event listeners
       if (typeof mindarThree.cleanup === 'function') {
@@ -1269,7 +1114,6 @@ const stopAR = async () => {
 
       await mindarThree.stop();
       mindarThree = null;
-      console.log('MindAR stopped');
     }
 
     // Stop animation cycle
@@ -1280,7 +1124,6 @@ const stopAR = async () => {
 
     // Clean up renderer
     if (renderer) {
-      console.log('Disposing renderer...');
       renderer.dispose();
 
       // Clear the container
@@ -1296,8 +1139,6 @@ const stopAR = async () => {
     scene = null;
     camera = null;
 
-    console.log('AR experience stopped successfully');
-
     // Update button states
     if (startButton) startButton.disabled = false;
     if (stopButton) stopButton.disabled = true;
@@ -1310,13 +1151,11 @@ const stopAR = async () => {
 
 // Handle window resize
 window.addEventListener('resize', () => {
-  console.log('Window resized');
   if (testMode && renderer) {
     // Update camera aspect ratio and renderer size
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
-    console.log('Renderer resized');
   }
   // MindAR handles resize automatically in AR mode
 });
@@ -1324,14 +1163,12 @@ window.addEventListener('resize', () => {
 // Event listeners
 if (startButton) {
   startButton.addEventListener('click', startAR);
-  console.log('Start button event listener attached');
 } else {
   console.warn('Start button not found, cannot attach event listener');
 }
 
 if (stopButton) {
   stopButton.addEventListener('click', stopAR);
-  console.log('Stop button event listener attached');
 } else {
   console.warn('Stop button not found, cannot attach event listener');
 }
@@ -1346,8 +1183,6 @@ window.addEventListener('error', (error) => {
 
 // Apply warm emissive material to dis-ball model
 function applyWarmEmissiveMaterial(object) {
-  console.log('Applying simple warm emissive material to dis-ball');
-
   // Create a warm emissive material
   const warmEmissiveMaterial = new THREE.MeshStandardMaterial({
     color: new THREE.Color(0xffffff), // Warm orange-yellow color
@@ -1360,8 +1195,6 @@ function applyWarmEmissiveMaterial(object) {
   // Apply the material to the object
   object.traverse(child => {
     if (child.isMesh) {
-      console.log(`Applying warm emissive material to mesh: ${child.name}`);
-
       // Store the original material for reference
       child.userData.originalMaterial = child.material;
 
@@ -1369,7 +1202,5 @@ function applyWarmEmissiveMaterial(object) {
       child.material = warmEmissiveMaterial;
     }
   });
-
-  console.log('Warm emissive material applied');
   return object;
 } 
