@@ -7,15 +7,112 @@ import { MindARThree } from 'mindar-image-three';
 // DOM elements
 const loadingElement = document.querySelector('.loading');
 const startButton = document.getElementById('startButton');
-const stopButton = document.getElementById('stopButton');
 
 // Global variables
 let mindarThree = null;
 let clock = new THREE.Clock();
 let scene, camera, renderer;
 let orbitControls = null;
-let defaultCameraPosition = new THREE.Vector3(0, 0, 5);
+let defaultCameraPosition = new THREE.Vector3(0, 0, 3); // Closer to match AR view
 let testMode = false; // Default to test mode (true) - change to false for AR mode
+
+// Audio variables
+let audioContext = null;
+let audioElement = null;
+let audioSource = null;
+let audioGainNode = null;
+let audioFadeTimeout = null;
+
+// Initialize audio
+function initAudio() {
+  try {
+    // Create audio element
+    audioElement = new Audio('safra.mp3');
+    audioElement.loop = false; // Don't loop internally, we'll handle restart
+    
+    // Create audio context
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    
+    // Create source and gain nodes
+    audioSource = audioContext.createMediaElementSource(audioElement);
+    audioGainNode = audioContext.createGain();
+    
+    // Connect nodes
+    audioSource.connect(audioGainNode);
+    audioGainNode.connect(audioContext.destination);
+    
+    console.log('Audio system initialized');
+  } catch (error) {
+    console.error('Failed to initialize audio:', error);
+  }
+}
+
+// Play audio with reset at the end
+function playAudio() {
+  if (!audioElement || !audioContext) return;
+  
+  try {
+    // Resume audio context if suspended (needed for autoplay policies)
+    if (audioContext.state === 'suspended') {
+      audioContext.resume();
+    }
+    
+    // Reset volume to full
+    audioGainNode.gain.value = 1.0;
+    
+    // Clear any existing fade timeout
+    if (audioFadeTimeout) {
+      clearTimeout(audioFadeTimeout);
+    }
+    
+    // Play from beginning
+    audioElement.currentTime = 0;
+    audioElement.play().catch(error => {
+      console.error('Error playing audio:', error);
+    });
+    
+    console.log('Audio playback started');
+  } catch (error) {
+    console.error('Error playing audio:', error);
+  }
+}
+
+// Fade out audio over 2 seconds
+function fadeOutAudio() {
+  if (!audioElement || !audioContext || !audioGainNode) return;
+  
+  try {
+    const fadeTime = 2.0; // 2 seconds fade
+    const interval = 50; // Update every 50ms
+    const steps = fadeTime * 1000 / interval;
+    const volumeStep = 1.0 / steps;
+    
+    let currentStep = 0;
+    
+    const fadeInterval = setInterval(() => {
+      currentStep++;
+      const newVolume = 1.0 - (currentStep * volumeStep);
+      
+      if (newVolume <= 0 || currentStep >= steps) {
+        // Fade complete
+        audioGainNode.gain.value = 0;
+        clearInterval(fadeInterval);
+        
+        // Stop the audio after fade completes
+        setTimeout(() => {
+          audioElement.pause();
+        }, 100);
+      } else {
+        // Set new volume
+        audioGainNode.gain.value = newVolume;
+      }
+    }, interval);
+    
+    console.log('Audio fade out started');
+  } catch (error) {
+    console.error('Error fading audio:', error);
+  }
+}
 
 // Add window resize handler to ensure proper sizing
 window.addEventListener('resize', () => {
@@ -403,6 +500,18 @@ const ModelManager = {
       const { options } = this.models[path];
       this.showModel(path, options.delay);
     });
+    
+    // Start playing audio again
+    playAudio();
+    
+    // Setup the next fade timer
+    if (audioFadeTimeout) {
+      clearTimeout(audioFadeTimeout);
+    }
+    
+    audioFadeTimeout = setTimeout(() => {
+      fadeOutAudio();
+    }, this.cycleInterval - 2000); // 2 seconds before next cycle ends
   },
 
   // Start the automatic reset cycle
@@ -412,10 +521,27 @@ const ModelManager = {
       clearInterval(this.cycleTimer);
     }
 
+    // Start audio playback immediately
+    playAudio();
+
     // Set up the interval timer
     this.cycleTimer = setInterval(() => {
       this.resetModels();
     }, this.cycleInterval);
+    
+    // Set up a timer to start the audio fade 2 seconds before reset
+    const setupNextAudioFade = () => {
+      if (audioFadeTimeout) {
+        clearTimeout(audioFadeTimeout);
+      }
+      
+      audioFadeTimeout = setTimeout(() => {
+        fadeOutAudio();
+      }, this.cycleInterval - 2000); // 2 seconds before cycle ends
+    };
+    
+    // Setup initial fade timer
+    setupNextAudioFade();
   },
 
   // Stop the automatic reset cycle
@@ -423,6 +549,17 @@ const ModelManager = {
     if (this.cycleTimer) {
       clearInterval(this.cycleTimer);
       this.cycleTimer = null;
+    }
+    
+    // Clear audio fade timeout
+    if (audioFadeTimeout) {
+      clearTimeout(audioFadeTimeout);
+      audioFadeTimeout = null;
+    }
+    
+    // Stop audio playback
+    if (audioElement) {
+      audioElement.pause();
     }
   },
 
@@ -572,7 +709,7 @@ const getModelConfigs = () => {
       id: 'army',
       name: 'Army AR',
       path: 'models/army-ar.glb',
-      position: { x: 0.5, y: -1, z: .2 },
+      position: { x: 0.5, y: 0, z: -0.8 },
       scale: 0.3,
       delay: 2000,
       visible: false,
@@ -583,7 +720,7 @@ const getModelConfigs = () => {
       id: 'civilian',
       name: 'Civilian',
       path: 'models/civilian.fbx',
-      position: { x: 0, y: -1, z: 1 },
+      position: { x: 0, y: 0, z: 0 },
       scale: 0.003,
       delay: 100,
       visible: false,
@@ -594,7 +731,7 @@ const getModelConfigs = () => {
       id: 'rsaf',
       name: 'RSAF AR',
       path: 'models/rsaf.fbx',
-      position: { x: -0.5, y: -1, z: 0.5 },
+      position: { x: -0.5, y: 0, z: -0.5 },
       scale: 0.003,
       delay: 3500,
       visible: false,
@@ -605,7 +742,7 @@ const getModelConfigs = () => {
       id: 'dis',
       name: 'DIS AR',
       path: 'models/dis.glb',
-      position: { x: -1, y: -1, z: 0 },
+      position: { x: -1, y: 0, z: -1 },
       scale: 0.3,
       delay: 6500,
       visible: false,
@@ -615,7 +752,7 @@ const getModelConfigs = () => {
       id: 'ball',
       name: 'DIS Ball',
       path: 'models/dis-ball.fbx',
-      position: { x: -1, y: -0.6, z: 0.5 },
+      position: { x: -1, y: 0.4, z: -0.5 },
       scale: 0.0021,
       delay: 11000,
       visible: false,
@@ -626,7 +763,7 @@ const getModelConfigs = () => {
       id: 'navy',
       name: 'Navy AR',
       path: 'models/navy.fbx',
-      position: { x: 1, y: -1, z: 0.3 },
+      position: { x: 1, y: 0, z: -0.7 },
       scale: 0.003,
       delay: 5000,
       visible: false,
@@ -667,7 +804,7 @@ function createSpotlightCylinder(position, scale = 1.0) {
   // Position the cylinder above the model
   cylinder.position.set(
     position.x,
-    position.y + 3.2, // Position above the model
+    position.y + 4.2, // Position above the model
     position.z + 0.2
   );
 
@@ -689,8 +826,8 @@ const loadTestModels = async () => {
     // Create a single text box at the top of the scene
     const topTextBox = createTextBox(['Our NSmen', 'EVER READY', 'with our lives'], {
       x: 0,
-      y: 1.5, // Position at the top
-      z: 0.5
+      y: 2.5, // Position at the top
+      z: -0.75
     }, true);
 
     // Add to scene
@@ -705,9 +842,9 @@ const loadTestModels = async () => {
       'defend our nation at any time'
     ], {
       x: 0,
-      y: -2, // Position at the bottom, same as AR mode
-      z: 0.5
-    }, false);
+      y: -1, // Position at the bottom, same as AR mode
+      z: -0.75
+    }, false);  
 
     // Add to scene
     scene.add(bottomTextBox);
@@ -816,7 +953,7 @@ const initializeAR = async () => {
       container: document.querySelector("#ar-container"),
       imageTargetSrc: 'targets/targets.mind',
       uiScanning: true, // Show scanning UI
-      uiLoading: false, // We use our own loading UI
+      uiLoading: true, // We use our own loading UI
       rendererOptions: {
         antialias: true,
         alpha: true, // Enable transparency
@@ -824,9 +961,9 @@ const initializeAR = async () => {
         outputColorSpace: THREE.SRGBColorSpace,
         sortObjects: true // Enable manual sorting of transparent objects
       },
-      filterMinCF: 0.001, // Adjust tracking sensitivity
-      filterBeta: 0.01,   // Adjust tracking stability
-      missTolerance: 5,   // Number of frames to keep showing object when target is lost
+      filterMinCF: 0.0001, // More sensitive tracking
+      filterBeta: 0.005,   // More stable tracking, less jitter
+      missTolerance: 12,   // Keep showing object longer when target is lost (increased from 5)
       warmupTolerance: 5,  // Number of frames to wait before showing object when target is found
       mirrorVideo: true    // Mirror the camera feed like a selfie camera
     });
@@ -837,6 +974,16 @@ const initializeAR = async () => {
     renderer.setClearColor(0x000000, 0); // Set clear color with 0 alpha (fully transparent)
 
     const anchor = mindarThree.addAnchor(0);
+
+    // Create a parent container for all models and effects
+    const containerGroup = new THREE.Group();
+    
+    // Set the container position and scale - this will affect everything inside it
+    containerGroup.position.set(0, 0, 0); // Position up by 1.5 units on Y axis
+    containerGroup.scale.set(1,1,1); // Scale everything to 90%
+    
+    // Add the container to the anchor
+    anchor.group.add(containerGroup);
 
     // Add lighting
     const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
@@ -849,12 +996,12 @@ const initializeAR = async () => {
     // Create a single text box at the top of the scene
     const topTextBox = createTextBox(['Our NSmen', 'EVER READY', 'with our lives'], {
       x: 0,
-      y: 1.5, // Position at the top
-      z: 3
+      y: 2.5, // Position at the top
+      z: 0.5
     }, true);
 
-    // Add to anchor group
-    anchor.group.add(topTextBox);
+    // Add to container group instead of anchor group
+    containerGroup.add(topTextBox);
 
     // Create a single text box at the bottom of the scene with multi-line text
     const bottomTextBox = createTextBox([
@@ -864,12 +1011,12 @@ const initializeAR = async () => {
       'defend our nation at any time'
     ], {
       x: 0,
-      y: -1.5, // Position at the bottom, same as AR mode
-      z: 3
+      y: 0, // Position at the bottom
+      z: 0.5
     }, false);
 
-    // Add to anchor group
-    anchor.group.add(bottomTextBox);
+    // Add to container group instead of anchor group
+    containerGroup.add(bottomTextBox);
 
     // Store references to show/hide with target tracking
     const textBoxes = [topTextBox, bottomTextBox];
@@ -900,8 +1047,8 @@ const initializeAR = async () => {
         });
 
         if (model) {
-          // Add model to anchor group
-          anchor.group.add(model.object);
+          // Add model to container group instead of anchor group
+          containerGroup.add(model.object);
 
           // Skip creating spotlight for dis-ball model
           if (config.path.includes('dis-ball')) {
@@ -914,8 +1061,8 @@ const initializeAR = async () => {
             config.path.includes('glb') ? 1.5 : 0.8 // Larger for GLB models
           );
 
-          // Add to anchor group
-          anchor.group.add(spotlight);
+          // Add to container group instead of anchor group
+          containerGroup.add(spotlight);
 
           // Store reference to the spotlight
           spotlights.push({
@@ -930,11 +1077,6 @@ const initializeAR = async () => {
       }
     }
 
-
-    // Apply transformations in the correct order: scale, rotation, position
-    anchor.group.scale.set(1, 1, 1);
-    anchor.group.position.set(0, 0, 0);
-
     // Function to start animation sequence
     const startAnimationSequence = () => {
       if (animationSequenceStarted) {
@@ -942,6 +1084,18 @@ const initializeAR = async () => {
       }
 
       animationSequenceStarted = true;
+      
+      // Start audio playback when AR animation sequence starts
+      playAudio();
+      
+      // Set up a timer to fade out audio before the animation resets
+      if (audioFadeTimeout) {
+        clearTimeout(audioFadeTimeout);
+      }
+      
+      audioFadeTimeout = setTimeout(() => {
+        fadeOutAudio();
+      }, ModelManager.cycleInterval - 2000); // 2 seconds before cycle ends
 
       // Clear any existing timeouts (just in case)
       timeoutIds.forEach(id => {
@@ -1017,6 +1171,18 @@ const initializeAR = async () => {
       if (!animationSequenceStarted) return;
       animationSequenceStarted = false;
 
+      // Stop audio playback when AR animation sequence stops
+      if (audioElement) {
+        // Fade out audio if it's playing
+        fadeOutAudio();
+      }
+      
+      // Clear audio fade timeout
+      if (audioFadeTimeout) {
+        clearTimeout(audioFadeTimeout);
+        audioFadeTimeout = null;
+      }
+
       // Clear all timeouts
       timeoutIds.forEach(id => {
         clearTimeout(id);
@@ -1069,7 +1235,7 @@ const initializeAR = async () => {
     renderer.setAnimationLoop(() => {
       const delta = clock.getDelta();
       ModelManager.updateAnimations(delta);
-
+      
       renderer.render(scene, camera);
     });
 
@@ -1121,10 +1287,13 @@ function displayErrorMessage(message) {
 // Start AR experience
 const startAR = async () => {
   try {
+    // Initialize audio system
+    initAudio();
+    
     // Show loading screen
     if (loadingElement) {
       loadingElement.classList.remove('hidden');
-      document.querySelector('.loading-text').textContent = 'Loading...';
+      document.querySelector('.loading-text').textContent = 'Loading 3D Models...';
     }
 
     // Clean up any existing scene
@@ -1212,9 +1381,16 @@ const startAR = async () => {
       loadingElement.classList.add('hidden');
     }
 
-    // Update button states
-    if (startButton) startButton.disabled = true;
-    if (stopButton) stopButton.disabled = false;
+    // Hide start button after pressing
+    if (startButton) {
+      startButton.style.display = 'none';
+    }
+
+    // Hide the control panel entirely for fullscreen experience
+    const controlPanel = document.querySelector('.control-panel');
+    if (controlPanel) {
+      controlPanel.style.display = 'none';
+    }
 
   } catch (error) {
     console.error('Error starting AR:', error);
@@ -1228,7 +1404,6 @@ const startAR = async () => {
 
     // Reset button states
     if (startButton) startButton.disabled = false;
-    if (stopButton) stopButton.disabled = true;
   }
 };
 
@@ -1288,8 +1463,6 @@ const stopAR = async () => {
 
     // Update button states
     if (startButton) startButton.disabled = false;
-    if (stopButton) stopButton.disabled = true;
-
   } catch (error) {
     console.error('Error stopping AR:', error);
     alert(`Error stopping experience: ${error.message || 'Unknown error'}`);
@@ -1312,12 +1485,6 @@ if (startButton) {
   startButton.addEventListener('click', startAR);
 } else {
   console.warn('Start button not found, cannot attach event listener');
-}
-
-if (stopButton) {
-  stopButton.addEventListener('click', stopAR);
-} else {
-  console.warn('Stop button not found, cannot attach event listener');
 }
 
 // Handle errors
@@ -1396,24 +1563,24 @@ function createTextBox(text, position, isAbove = true) {
     // TOP TEXT BOX - Three lines with different sizes
 
     // First line: "Our NSmen" - 48px Arial Black
-    context.fillStyle = '#ffffff';  // White color
+    context.fillStyle = '#222222';  // White color
     context.font = '48px "Arial Black", sans-serif';
     context.fillText(text[0], canvas.width / 2, 100);
 
     // Second line: "EVER READY" - 72px Arial Black
-    context.fillStyle = '#ffffff';  // White
+    context.fillStyle = '#222222';  // White
     context.font = '72px "Arial Black", sans-serif';
     context.fillText(text[1], canvas.width / 2, 180);
 
     // Third line: "with our lives" - 48px Arial Black
-    context.fillStyle = '#ffffff';  // White color
+    context.fillStyle = '#222222';  // White color
     context.font = '48px "Arial Black", sans-serif';
     if (text[2]) {
       context.fillText(text[2], canvas.width / 2, 260);
     }
   } else {
     // BOTTOM TEXT BOX - Multi-line paragraph with regular Arial
-    context.fillStyle = '#ffffff';  // White color
+    context.fillStyle = '#222222';  // White color
     context.font = '32px Arial, sans-serif';  // Regular Arial, slightly smaller for more text
 
     // Handle multi-line text for bottom box
