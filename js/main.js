@@ -29,18 +29,18 @@ function initAudio() {
     // Create audio element
     audioElement = new Audio('safra.mp3');
     audioElement.loop = false; // Don't loop internally, we'll handle restart
-    
+
     // Create audio context
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    
+
     // Create source and gain nodes
     audioSource = audioContext.createMediaElementSource(audioElement);
     audioGainNode = audioContext.createGain();
-    
+
     // Connect nodes
     audioSource.connect(audioGainNode);
     audioGainNode.connect(audioContext.destination);
-    
+
     console.log('Audio system initialized');
   } catch (error) {
     console.error('Failed to initialize audio:', error);
@@ -50,27 +50,27 @@ function initAudio() {
 // Play audio with reset at the end
 function playAudio() {
   if (!audioElement || !audioContext) return;
-  
+
   try {
     // Resume audio context if suspended (needed for autoplay policies)
     if (audioContext.state === 'suspended') {
       audioContext.resume();
     }
-    
+
     // Reset volume to full
     audioGainNode.gain.value = 1.0;
-    
+
     // Clear any existing fade timeout
     if (audioFadeTimeout) {
       clearTimeout(audioFadeTimeout);
     }
-    
+
     // Play from beginning
     audioElement.currentTime = 0;
     audioElement.play().catch(error => {
       console.error('Error playing audio:', error);
     });
-    
+
     console.log('Audio playback started');
   } catch (error) {
     console.error('Error playing audio:', error);
@@ -80,24 +80,24 @@ function playAudio() {
 // Fade out audio over 2 seconds
 function fadeOutAudio() {
   if (!audioElement || !audioContext || !audioGainNode) return;
-  
+
   try {
     const fadeTime = 2.0; // 2 seconds fade
     const interval = 50; // Update every 50ms
     const steps = fadeTime * 1000 / interval;
     const volumeStep = 1.0 / steps;
-    
+
     let currentStep = 0;
-    
+
     const fadeInterval = setInterval(() => {
       currentStep++;
       const newVolume = 1.0 - (currentStep * volumeStep);
-      
+
       if (newVolume <= 0 || currentStep >= steps) {
         // Fade complete
         audioGainNode.gain.value = 0;
         clearInterval(fadeInterval);
-        
+
         // Stop the audio after fade completes
         setTimeout(() => {
           audioElement.pause();
@@ -107,7 +107,7 @@ function fadeOutAudio() {
         audioGainNode.gain.value = newVolume;
       }
     }, interval);
-    
+
     console.log('Audio fade out started');
   } catch (error) {
     console.error('Error fading audio:', error);
@@ -225,18 +225,6 @@ const ModelManager = {
     const modelOptions = { ...defaultOptions, ...options };
 
     try {
-      // Check if file exists
-      try {
-        const response = await fetch(path, { method: 'HEAD' });
-        if (!response.ok) {
-          console.error(`Model file not found: ${path}`);
-          throw new Error(`Model file not found: ${path}`);
-        }
-      } catch (error) {
-        console.error(`Error checking model file: ${path}`, error);
-        throw new Error(`Cannot access model file: ${path}`);
-      }
-
       // Load model based on file extension
       let object;
       let animations = [];
@@ -500,15 +488,15 @@ const ModelManager = {
       const { options } = this.models[path];
       this.showModel(path, options.delay);
     });
-    
+
     // Start playing audio again
     playAudio();
-    
+
     // Setup the next fade timer
     if (audioFadeTimeout) {
       clearTimeout(audioFadeTimeout);
     }
-    
+
     audioFadeTimeout = setTimeout(() => {
       fadeOutAudio();
     }, this.cycleInterval - 2000); // 2 seconds before next cycle ends
@@ -528,18 +516,18 @@ const ModelManager = {
     this.cycleTimer = setInterval(() => {
       this.resetModels();
     }, this.cycleInterval);
-    
+
     // Set up a timer to start the audio fade 2 seconds before reset
     const setupNextAudioFade = () => {
       if (audioFadeTimeout) {
         clearTimeout(audioFadeTimeout);
       }
-      
+
       audioFadeTimeout = setTimeout(() => {
         fadeOutAudio();
       }, this.cycleInterval - 2000); // 2 seconds before cycle ends
     };
-    
+
     // Setup initial fade timer
     setupNextAudioFade();
   },
@@ -550,13 +538,13 @@ const ModelManager = {
       clearInterval(this.cycleTimer);
       this.cycleTimer = null;
     }
-    
+
     // Clear audio fade timeout
     if (audioFadeTimeout) {
       clearTimeout(audioFadeTimeout);
       audioFadeTimeout = null;
     }
-    
+
     // Stop audio playback
     if (audioElement) {
       audioElement.pause();
@@ -719,7 +707,7 @@ const getModelConfigs = () => {
     {
       id: 'civilian',
       name: 'Civilian',
-      path: 'models/civilian.fbx',
+      path: 'models/Civilian.fbx',
       position: { x: 0, y: 0, z: 0 },
       scale: 0.003,
       delay: 100,
@@ -844,7 +832,7 @@ const loadTestModels = async () => {
       x: 0,
       y: -1, // Position at the bottom, same as AR mode
       z: -0.75
-    }, false);  
+    }, false);
 
     // Add to scene
     scene.add(bottomTextBox);
@@ -968,7 +956,7 @@ const initializeAR = async () => {
       mirrorVideo: true    // Mirror the camera feed like a selfie camera
     });
 
-    const { renderer, scene, camera } = mindarThree;
+    ({ renderer, scene, camera } = mindarThree);
 
     // Ensure transparent background
     renderer.setClearColor(0x000000, 0); // Set clear color with 0 alpha (fully transparent)
@@ -977,11 +965,11 @@ const initializeAR = async () => {
 
     // Create a parent container for all models and effects
     const containerGroup = new THREE.Group();
-    
+
     // Set the container position and scale - this will affect everything inside it
     containerGroup.position.set(0, 0, 0); // Position up by 1.5 units on Y axis
-    containerGroup.scale.set(1,1,1); // Scale everything to 90%
-    
+    containerGroup.scale.set(1, 1, 1); // Scale everything to 90%
+
     // Add the container to the anchor
     anchor.group.add(containerGroup);
 
@@ -1084,15 +1072,15 @@ const initializeAR = async () => {
       }
 
       animationSequenceStarted = true;
-      
+
       // Start audio playback when AR animation sequence starts
       playAudio();
-      
+
       // Set up a timer to fade out audio before the animation resets
       if (audioFadeTimeout) {
         clearTimeout(audioFadeTimeout);
       }
-      
+
       audioFadeTimeout = setTimeout(() => {
         fadeOutAudio();
       }, ModelManager.cycleInterval - 2000); // 2 seconds before cycle ends
@@ -1176,7 +1164,7 @@ const initializeAR = async () => {
         // Fade out audio if it's playing
         fadeOutAudio();
       }
-      
+
       // Clear audio fade timeout
       if (audioFadeTimeout) {
         clearTimeout(audioFadeTimeout);
@@ -1235,7 +1223,7 @@ const initializeAR = async () => {
     renderer.setAnimationLoop(() => {
       const delta = clock.getDelta();
       ModelManager.updateAnimations(delta);
-      
+
       renderer.render(scene, camera);
     });
 
@@ -1289,7 +1277,7 @@ const startAR = async () => {
   try {
     // Initialize audio system
     initAudio();
-    
+
     // Show loading screen
     if (loadingElement) {
       loadingElement.classList.remove('hidden');
@@ -1407,14 +1395,9 @@ const startAR = async () => {
   }
 };
 
-// Directly initialize on page load to diagnose loading issues
+// Initialize diagnostic check
 window.addEventListener('load', () => {
-  // Check if files exist
-  Promise.all([
-    fetch('models/', { method: 'HEAD' }).catch(() => ({ ok: false, status: 404 })),
-    fetch('targets/', { method: 'HEAD' }).catch(() => ({ ok: false, status: 404 })),
-    fetch('js/main.js', { method: 'HEAD' }).catch(() => ({ ok: false, status: 404 }))
-  ]);
+  console.log('SAFRA AR Experience loaded');
 });
 
 // Stop AR experience
